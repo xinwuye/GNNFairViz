@@ -1,5 +1,6 @@
 from . import util
 from . import draw
+from . import community
 from .metrics import node_classification
 from .metrics.pdd import pdd
 import numpy as np
@@ -17,7 +18,7 @@ from holoviews.streams import Stream, param
 from holoviews import streams
 # import datashader as ds
 # import datashader.transfer_functions as tf
-# import pandas as pd
+import pandas as pd
 # from datashader.bundling import connect_edges, hammer_bundle
 # from holoviews.operation.datashader import datashade, bundle_graph
 import panel as pn
@@ -67,6 +68,10 @@ class DataFeatureView(Stream):
     # max_hop = param.Integer(default=0, constant=True, doc='Max hop.')
 
 
+class DataSubgraphView(Stream):
+    communities = param.List(default=[], constant=True, doc='Communities.')
+
+
 class EUG:
     def __init__(self, model, adj, feat, sens, sens_names, max_hop, masks, 
                  labels, emb_fnc, perplexity=PERPLEXITY, feat_names=None):
@@ -75,8 +80,9 @@ class EUG:
             self.feat_names = np.array([str(i) for i in range(feat.shape[-1])])
         else:
             self.feat_names = feat_names
-        self.model = copy.deepcopy(model)
+        self.model = copy.deepcopy(model)        
         self.adj = adj
+        self.adj0, self.adj1, self.adj0_scipy, self.adj1_scipy = util.modify_sparse_tensor_scipy(adj)
         self.feat = feat
         self.sens = sens
         self.sens_names = sens_names
@@ -121,14 +127,11 @@ class EUG:
         # self.metrics = util.calc_metrics(self.embeddings, sens_names, sens, self.degree_boxes)
         # self.metric_types = list(self.metrics[0].columns)
 
-        tsne = TSNE(perplexity=perplexity, 
-            n_components=2, 
-            init='pca', 
-            n_iter=1250, 
-            learning_rate='auto', random_state=SEED)
-        self.embeddings_tsne = util.proj_emb(self.embeddings, tsne)
+        self.embeddings_pca = util.proj_emb(self.embeddings, 'pca')
+        self.embeddings_tsne = []
+        self.embeddings_umap = []
 
-        self.xy = np.array(self.embeddings_tsne)
+        self.xy = np.array(self.embeddings_pca)
         # self.masked_adj_unfair = np.zeros_like(adj)
         # self.masked_adj_fair = np.zeros_like(adj)
         # self.feat_mask_unfair = np.zeros(self.feat.shape[-1])
@@ -199,26 +202,26 @@ class EUG:
         self.feature_view = None
 
     def show(self):
-        height = 900
+        height = 1900
         width = 900
         self.height = height
         self.width = width
 
-        self.control_panel_height = int(height/3-35)
+        self.control_panel_height = int(height/2/3-35)
         self.control_panel_width = int(width*2/7)
-        self.graph_view_height = int(height/3-35)
+        self.graph_view_height = int(height/2/3-35)
         self.graph_view_width = int(width*2/7)
-        self.fairness_metric_view_height = int(height/3-35)
+        self.fairness_metric_view_height = int(height/2/3-35)
         self.fairness_metric_view_width = int(width*3/7)
-        self.density_view_height = int(height/3-35)
+        self.density_view_height = int(height/2/3-35)
         self.density_view_width = int(width*5/14)
-        self.subgraph_view_height = int(height/3-35)
+        self.subgraph_view_height = int(height/2/3-35)
         self.subgraph_view_width = int(width*5/14)
-        self.attribute_view_height = int(height/3-35)
-        self.attribute_view_width = int(width*4/14)
-        self.correlation_view_height = int(height*2/3-35)
+        self.attribute_view_height = int(height/2/2-35)
+        self.attribute_view_width = int(width*10/14)
+        self.correlation_view_height = int(height/2*2/3-35)
         self.correlation_view_width = int(width*10/14)
-        self.neighbor_view_height = int(height/3-35)
+        self.neighbor_view_height = int(height/2/3-35)
         self.neighbor_view_width = int(width/2)
 
         # widget for all
@@ -248,7 +251,7 @@ class EUG:
         data_confirm_fairness_metric_view_button = pn.widgets.Button(name='Confirm', button_type='default')
         data_confirm_fairness_metric_view_button.on_click(self._data_confirm_fairness_metric_view_button_callback)
 
-        # graph view
+### graph view
         # wh_graph_view = min(width/3, height/2-115)
         wh_graph_view = min(self.graph_view_width, self.graph_view_height-35)
         self.data_graph_view = DataGraphView(xy=self.xy, sens_name=self.sens_name.value)
@@ -300,7 +303,7 @@ class EUG:
 
         # edge_legend = draw.draw_edge_legend()
 
-        # fairness metric view
+### fairness metric view
         self.fairness_metric_view_chart = pn.pane.HoloViews()
         # Create buttons and labels
         labeled_mask = self.labels != -1
@@ -362,7 +365,7 @@ class EUG:
             width=self.fairness_metric_view_width,
         )
 
-        # correlation view
+### correlation view
         idx_train = self.train_mask.nonzero().flatten()
         idx_test = self.test_mask.nonzero().flatten()
         idx_val = self.val_mask.nonzero().flatten()
@@ -379,13 +382,13 @@ class EUG:
         # print(feat_train.shape)
         # Check if each column consists of only 0s and 1s
         # columns_only_0_and_1 = np.all(np.logical_or(feat_train == 0, feat_train == 1), axis=0)
-        columns_categorical = util.check_unique_values(feat_train)
+        self.columns_categorical = util.check_unique_values(feat_train)
         # correlation_matrix = np.corrcoef(feat_train.T, estimated_pdd)
-        pearson_r_results = [stats.pearsonr(row, estimated_pdd) for row in feat_train.T[~columns_categorical]]
+        pearson_r_results = [stats.pearsonr(row, estimated_pdd) for row in feat_train.T[~self.columns_categorical]]
         pearson_correlations = [r[0] for r in pearson_r_results]
         pearson_p_vals = [r[1] for r in pearson_r_results]
 
-        pointbiserialr_results = [stats.pointbiserialr(row, estimated_pdd) for row in feat_train.T[columns_categorical]]
+        pointbiserialr_results = [stats.pointbiserialr(row, estimated_pdd) for row in feat_train.T[self.columns_categorical]]
         pointbiserial_correlations = [r[0] for r in pointbiserialr_results]
         pointbiserial_p_vals = [r[1] for r in pointbiserialr_results]
         
@@ -394,17 +397,17 @@ class EUG:
         width_correlation_view_selection_continuous = height_correlation_view_selection_continuous * len(pearson_correlations)
         width_correlation_view_selection_categorical = height_correlation_view_selection_continuous * len(pointbiserial_correlations)
 
-        self.correlation_view_selection_continuous = draw.draw_correlation_view_selection(pearson_correlations, pearson_p_vals, self.feat_names[~columns_categorical]) \
+        self.correlation_view_selection_continuous = draw.draw_correlation_view_selection(pearson_correlations, pearson_p_vals, self.feat_names[~self.columns_categorical]) \
             .opts(opts.Rectangles(height=height_correlation_view_selection_continuous, width=width_correlation_view_selection_continuous))
-        self.correlation_view_hex = hv.DynamicMap(pn.bind(draw.draw_correlation_view_hex, feat=feat_train.T[~columns_categorical], pdd=estimated_pdd),
+        self.correlation_view_hex = hv.DynamicMap(pn.bind(draw.draw_correlation_view_hex, feat=feat_train.T[~self.columns_categorical], pdd=estimated_pdd),
                                                   streams=[streams.SingleTap(source=self.correlation_view_selection_continuous)]) \
             .opts(width=int(self.correlation_view_width*0.4), 
                   height=int(self.correlation_view_height*0.6),
                   shared_axes=False,
                   )
-        self.correlation_view_selection_categorical = draw.draw_correlation_view_selection(pointbiserial_correlations, pointbiserial_p_vals, self.feat_names[columns_categorical]) \
+        self.correlation_view_selection_categorical = draw.draw_correlation_view_selection(pointbiserial_correlations, pointbiserial_p_vals, self.feat_names[self.columns_categorical]) \
             .opts(opts.Rectangles(height=height_correlation_view_selection_categorical, width=width_correlation_view_selection_categorical))
-        self.correlation_view_violin = hv.DynamicMap(pn.bind(draw.draw_correlation_view_violin, feat=feat_train.T[columns_categorical], pdd=estimated_pdd),
+        self.correlation_view_violin = hv.DynamicMap(pn.bind(draw.draw_correlation_view_violin, feat=feat_train.T[self.columns_categorical], pdd=estimated_pdd),
                                                     streams=[streams.SingleTap(source=self.correlation_view_selection_categorical)]) \
             .opts(width=int(self.correlation_view_width*0.4),
                     height=int(self.correlation_view_height*0.6),
@@ -445,37 +448,132 @@ class EUG:
             width=self.correlation_view_width,
             )
 
-        # subgraph view
-        self.subgraph_view = pn.Card(
-            pn.pane.HoloViews(),
-            hide_header=True,
-            name='Subgraph View',
-            # height=int(height/2-80),
-            # width=int(width/3),
-            height=self.subgraph_view_height,
-            width=self.subgraph_view_width,
-            )
+### attribute view
+        # continuous attributes
+        feat_continuous = self.feat[:, ~self.columns_categorical].cpu().numpy()
+        feat_names_continuous = self.feat_names[~self.columns_categorical]
+        feat_continuous_df = pd.DataFrame(feat_continuous, columns=feat_names_continuous)
+        # Initialize an empty list to hold the plots
+        self.attribute_view_violins = []
+        # Iterate over each feature name in the DataFrame
+        for feat_name in feat_names_continuous:
+            # Extract the column (variable) data
+            variable_data = feat_continuous_df[feat_name]          
+            # Generate the violin plot for this variable
+            plot = draw.draw_attribute_view_violin(variable_data, feat_name, self.sens[0])   
+            # Append the generated plot to the list of plots
+            self.attribute_view_violins.append(plot)
+        # Combine all plots vertically into a single layout
+        self.attribute_view_violin = hv.Layout(self.attribute_view_violins).cols(1)
 
-        # attribute view
+        # categorical attributes
+        feat_categorical = self.feat[:, self.columns_categorical].cpu().numpy()
+        feat_names_categorical = self.feat_names[self.columns_categorical]
+        feat_categorical_df = pd.DataFrame(feat_categorical, columns=feat_names_categorical)
+        # Initialize an empty list to hold the bar charts
+        self.attribute_view_bars = []
+        # Iterate over each feature name in the DataFrame
+        for feat_name in feat_names_categorical:
+            # Extract the column (variable) data
+            variable_data = feat_categorical_df[feat_name]            
+            # Generate the bar chart for this variable
+            bar_chart = draw.draw_attribute_view_bar(variable_data, feat_name, self.sens[0])            
+            # Append the generated chart to the list
+            self.attribute_view_bars.append(bar_chart)
+        # Combine all bar charts vertically into a single layout
+        self.attribute_view_bar = hv.Layout(self.attribute_view_bars).cols(1)
+
+        # sensitive attribute
+        self.attribute_view_sens = draw.draw_attribute_view_sens(self.sens[0])
+        bar_chart = draw.draw_attribute_view_bar(variable_data, feat_name, self.sens[0]) 
+
         self.attribute_view = pn.Card(
-            pn.pane.HoloViews(),
+            hv.Layout([self.attribute_view_sens, ]).cols(1),
+            pn.Row(
+                pn.Column(
+                    self.attribute_view_violin, 
+                    scroll=True, 
+                    height=int(self.attribute_view_height*0.6)
+                ),
+                pn.Column(
+                    self.attribute_view_bar, 
+                    scroll=True, 
+                    height=int(self.attribute_view_height*0.6)
+                ),  
+            ),
             hide_header=True,
             name='Attribute View',
-            # height=int(height/2-80),
-            # width=int(width/3),
             height=self.attribute_view_height,
             width=self.attribute_view_width,
             )
 
-        # density view
+### density view
+        # Create the scatter plot
+        self.extract_communities_args = community.process_graph(self.adj0)
+        node_communities = community.extract_communities(*self.extract_communities_args, 0.5)
+        self.communities = []
+        for indices in node_communities:
+            # Convert set of indices to sorted list for slicing
+            indices_sorted = sorted(list(indices))
+            # Slice rows: Efficient in CSR format
+            row_sliced = self.adj0_scipy[indices_sorted, :]
+            # Slice columns: Convert to CSC format for efficient column slicing if necessary
+            # For simplicity, here we use the CSR format (less efficient for cols)
+            final_slice = row_sliced[:, indices_sorted]
+            self.communities.append(final_slice)
+        self.data_subgraph_view = DataSubgraphView(communities=self.communities)
+        graph_metrics = util.calculate_graph_metrics(self.communities) # Adjust this line as per your actual data structure
+        self.density_view_scatter = draw.draw_density_view_scatter(graph_metrics) \
+            .opts(width=int(self.density_view_width), 
+                  height=int(self.density_view_height),
+                  shared_axes=False,
+                  )
+
+        # Slider for min_threshold
+        self.min_threshold_slider = pn.widgets.FloatSlider(name='Minimum Density Threshold', start=0.0, end=1.0, step=0.01, value=0.5)
+
+        # Button to recalculate and redraw plots
+        min_threshold_slider_button = pn.widgets.Button(name='Update Communities')
+
+        min_threshold_slider_button.on_click(self._min_threshold_slider_button_callback)
+
+        self.density_view_widgets = pn.WidgetBox(
+            self.min_threshold_slider, 
+            min_threshold_slider_button,
+            height=self.density_view_height,
+            width=self.density_view_width,
+            name='Settings',
+            )
+
         self.density_view = pn.Card(
-            pn.pane.HoloViews(),
+            self.density_view_scatter,
+            hv.streams.Selection1D(source=self.density_view_scatter),
             hide_header=True,
             name='Density View',
             # height=int(height/2-80),
             # width=int(width/3),
             height=self.density_view_height,
             width=self.density_view_width,
+            )
+        
+### subgraph view
+        # Create the heatmap (initially with index 0)
+        self.subgraph_view_heatmap = hv.DynamicMap(draw.draw_subgraph_view_heatmap, 
+                                                  streams=[hv.streams.Selection1D(source=self.density_view_scatter), 
+                                                           self.data_subgraph_view]) \
+            .opts(width=int(self.subgraph_view_width), 
+                  height=int(self.subgraph_view_height),
+                  shared_axes=False,
+                  )
+        
+        self.subgraph_view = pn.Card(
+            self.subgraph_view_heatmap,
+            hide_header=True,
+            name='Subgraph View',
+            # height=int(height/2-80),
+            # width=int(width/3),
+            height=self.subgraph_view_height,
+            width=self.subgraph_view_width,
             )
         
         # neighbor view
@@ -520,21 +618,16 @@ class EUG:
             # height=self.fairness_metric_view_height+80,
             # width=self.fairness_metric_view_width,
             )
-        # app[1, 0: 5] = pn.Tabs(
-        #     self.density_view,
-        #     # height=self.correlation_view_height+80,
-        #     # width=self.correlation_view_width,
-        #     )
-        # app[1, 5: 10] = pn.Tabs(
-        #     self.subgraph_view,
-        #     # height=self.subgraph_view_height+80,
-        #     # width=self.subgraph_view_width,
-        #     )
-        # app[1, 10: 14] = pn.Tabs(
-        #     self.attribute_view,
-        #     # height=self.attribute_view_height+80,
-        #     # width=self.attribute_view_width,
-        #     )
+        app[2: 5, 10: 14] = pn.Tabs(
+            self.density_view,
+            self.density_view_widgets,
+            )
+        app[6: 9, 10: 14] = pn.Tabs(
+            self.subgraph_view,
+            )
+        app[6: 11, 0: 10] = pn.Tabs(
+            self.attribute_view,
+            )
         app[2: 6, 0: 10] = pn.Tabs(
             self.correlation_view,
             # height=self.density_view_height+80,
@@ -780,3 +873,12 @@ class EUG:
         chart.opts(width=int(self.fairness_metric_view_width-120), height=int(self.fairness_metric_view_height-35))
 
         self.fairness_metric_view_chart.object = chart
+
+    def _min_threshold_slider_button_callback(self, event):
+        # Recalculate communities
+        self.communities = community.extract_communities(*self.extract_communities_args, 0.5)
+        graph_metrics = util.calculate_graph_metrics(self.communities)
+        self.density_view_scatter.object = draw.draw_density_view_scatter(graph_metrics)
+
+        # self.density_view_heatmap.object = draw.draw_density_view_heatmap(self.communities, self.min_threshold_slider.value)
+        self.data_subgraph_view.event(communities=self.communities)

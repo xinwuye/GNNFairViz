@@ -4,7 +4,7 @@ import numpy as np
 import holoviews as hv
 from holoviews import opts, streams
 # import os
-# import torch
+import torch
 import numpy as np
 # from sklearn.manifold import TSNE
 # from holoviews.streams import Stream, param
@@ -19,6 +19,7 @@ from bokeh.models import CustomJSTickFormatter
 # from tqdm import tqdm
 from . import RangesetCategorical
 from scipy.spatial.distance import cdist
+from scipy.stats import kruskal, mannwhitneyu
 import matplotlib.pyplot as plt
 from bokeh.models import HoverTool
 import matplotlib.colors as mcolors
@@ -282,3 +283,135 @@ def draw_correlation_view_legend(cmap_name='coolwarm'):
     return img
 
 
+def draw_density_view_scatter(graph_metrics):
+    # graph_metrics is a list of tuples (num_nodes, density)
+    # scatter_data = [(metric[0], metric[1]) for metric in graph_metrics]
+    scatter_plot = hv.Scatter(graph_metrics, kdims=['Number of Nodes'], vdims=['Density'])
+    return scatter_plot.opts(tools=['hover', 'tap'], active_tools=['tap'])
+
+
+def draw_subgraph_view_heatmap(communities, index):
+    # get the first element of list index if it is not empty
+    if index:
+        community = communities[index[0]]
+        # Extract non-zero indices
+        rows, cols = community.nonzero()
+
+        # Prepare data for Holoviews
+        # We create a list of tuples (i, j, 1) for each non-zero element
+        data = [(rows[i], cols[i], 1) for i in range(len(rows))]
+
+        # Define a Holoviews Dataset
+        hv_dataset = hv.Dataset(data, ['i', 'j'], 'value')
+
+        # Create a heatmap using the dataset
+        # We use a colormap that maps 1 to black
+        heatmap = hv.HeatMap(hv_dataset).opts(cmap=['black'], colorbar=False)
+    else:
+        heatmap = hv.HeatMap([])
+
+    return heatmap
+
+
+# def draw_attribute_view_violin(variable_data, feat_name, groups):
+#     # If variable_data is a numpy array, convert it to a Pandas Series
+#     if isinstance(variable_data, np.ndarray):
+#         variable_data = pd.Series(variable_data, name=feat_name)
+    
+#     # Ensure groups is a Series and has the same index as variable_data
+#     if isinstance(groups, np.ndarray):
+#         groups = pd.Series(groups, name="Group")
+    
+#     # Combine the variable and groups into a single DataFrame
+#     df = pd.concat([variable_data, groups], axis=1)
+    
+#     # Draw the violin plot for the specified feature, grouped by 'Group'
+#     violin = hv.Violin(df, 'Group', feat_name).opts(toolbar=None, ylabel=feat_name)
+    
+#     return violin
+def draw_attribute_view_violin(variable_data, feat_name, groups):
+    if isinstance(variable_data, np.ndarray):
+        variable_data = pd.Series(variable_data, name=feat_name)
+    
+    if isinstance(groups, np.ndarray):
+        groups = pd.Series(groups, name="Group")
+    
+    df = pd.concat([variable_data, groups], axis=1)
+    
+    # Global statistical test (Kruskal-Wallis)
+    kruskal_stat, kruskal_p = kruskal(*[group[feat_name].values for name, group in df.groupby("Group")])
+    
+    # Pairwise tests (Mann-Whitney U) for each group
+    group_colors = {}
+    for group_name in df['Group'].unique():
+        group_data = df[df['Group'] == group_name][feat_name]
+        other_data = df[df['Group'] != group_name][feat_name]
+        
+        stat, p = mannwhitneyu(group_data, other_data, alternative='two-sided')
+        group_colors[group_name] = 'green' if p > 0.05 else 'red'  # Use 'red' to indicate differnt distribution
+
+    # Create individual violin plots for each group and set colors
+    violin_plots = []
+    for group_name in df['Group'].unique():
+        group_df = df[df['Group'] == group_name]
+        color = group_colors[group_name]
+        violin = hv.Violin(group_df, ('Group', 'Group'), feat_name).opts(violin_fill_color=color)
+        violin_plots.append(violin)
+
+    # Overlay the plots to create a combined plot with different colors
+    violin_plot = hv.Overlay(violin_plots).opts(toolbar=None, ylabel=f"{feat_name} (p={kruskal_p:.3f})", 
+                                                shared_axes=False)
+    if kruskal_p <= 0.05:
+        # Define a hook function to modify the plot
+        def customize_plot(plot, element):
+            plot.handles['yaxis'].axis_label_text_color = 'red'
+        violin_plot.opts(hooks=[customize_plot])
+    
+    return violin_plot
+
+
+def draw_attribute_view_bar(variable_data, feat_name, groups):
+    # Ensure variable_data and groups are pandas Series with the same length
+    if isinstance(variable_data, np.ndarray):
+        variable_data = pd.Series(variable_data, name=feat_name)
+    if isinstance(groups, np.ndarray):
+        groups = pd.Series(groups, name="Group")
+    
+    # Combine into a DataFrame
+    df = pd.concat([variable_data, groups], axis=1)
+    
+    # Count occurrences of each category within each group
+    aggregated_df = df.groupby(['Group', feat_name]).size().reset_index(name='Count')
+    
+    # Create the bar chart
+    bars = hv.Bars(aggregated_df, ['Group', feat_name], 'Count').opts(stacked=True, width=400, tools=['hover'],
+                                                                      shared_axes=False,)
+    
+    return bars
+
+
+def draw_attribute_view_sens(arr):
+    """
+    Draws a bar chart for the categorical values contained in a NumPy array using HoloViews.
+
+    Parameters:
+    - arr: np.array, an array consisting of categorical values.
+
+    Returns:
+    A HoloViews object that renders a bar chart visualizing the frequency of each category.
+    """
+    # Calculate the frequency of each unique category in the array
+    unique, counts = np.unique(arr, return_counts=True)
+    
+    # Prepare the data for HoloViews in the form of a list of tuples (category, frequency)
+    data = list(zip(unique, counts))
+    
+    # Create a Bar chart using HoloViews
+    bars = hv.Bars(data, hv.Dimension('Category'), 'Frequency').opts(
+        tools=['hover'],  # Enable hover tool for more interactive charts
+        xlabel='Category', ylabel='Frequency',  # Label axes
+        title='Categorical Value Frequencies',  # Chart title
+        shared_axes=False, width=400
+    )
+    
+    return bars

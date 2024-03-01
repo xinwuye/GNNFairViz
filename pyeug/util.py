@@ -9,6 +9,9 @@ from sklearn.metrics import recall_score
 from sklearn.metrics import precision_score
 from sklearn.metrics import f1_score
 from sklearn.metrics import roc_auc_score
+import umap
+import scipy.sparse as sp
+from scipy.sparse import coo_matrix, csr_matrix
 import pickle
 import networkx as nx
 from networkx.readwrite import json_graph
@@ -67,7 +70,7 @@ def all_embeddings(model, x, adj):
     return layer_embeddings
 
 
-def proj_emb(embeddings_ls, projector): 
+def proj_emb(embeddings_ls, method_name, perplexity=15, seed=42): 
     '''
     Project embeddings to 2D space
     Args:
@@ -77,17 +80,32 @@ def proj_emb(embeddings_ls, projector):
         embeddings_2d_ls: list of 2D embeddings
     '''  
     embeddings_2d_ls = []
-    # begin projection
-    # print('\nbegin projection...')
-    # for e in tqdm(embeddings_ls):
-    for e in embeddings_ls:
-        # if e.shape[1] != 2:
-        if isinstance(e, torch.Tensor):
-            e = e.detach().cpu().numpy()
-            embeddings_2d = projector.fit_transform(e)
-            embeddings_2d_ls.append(embeddings_2d)
-    # finish projection
-    # print('\nfinish projection...')
+    if method_name == 'tsne':
+        projector = TSNE(perplexity=perplexity, 
+                n_components=2, 
+                init='pca', 
+                n_iter=1250, 
+                learning_rate='auto', random_state=seed)
+        for e in embeddings_ls:
+            # if e.shape[1] != 2:
+            if isinstance(e, torch.Tensor):
+                e = e.detach().cpu().numpy()
+                embeddings_2d = projector.fit_transform(e)
+                embeddings_2d_ls.append(embeddings_2d)
+    elif method_name == 'pca':
+        projector = PCA(n_components=2)
+        for e in tqdm(embeddings_ls):
+            if isinstance(e, torch.Tensor):
+                e = e.detach().cpu().numpy()
+                embeddings_2d = projector.fit_transform(e)
+                embeddings_2d_ls.append(embeddings_2d)
+    elif method_name == 'umap':
+        projector = umap.UMAP(n_components=2, random_state=seed)
+        for e in embeddings_ls:
+            if isinstance(e, torch.Tensor):
+                e = e.detach().cpu().numpy()
+                embeddings_2d = projector.fit_transform(e)
+                embeddings_2d_ls.append(embeddings_2d)
     return embeddings_2d_ls
 
 
@@ -564,3 +582,81 @@ def check_unique_values(arr):
             unique_check[i] = True
 
     return unique_check
+
+
+# Function to modify the sparse tensor using SciPy
+def modify_sparse_tensor_scipy(adj):
+    adj = adj.clone().coalesce()  # Ensure indices are sorted and duplicate indices are combined
+    # Convert PyTorch sparse tensor to SciPy COO matrix
+    indices = adj.indices().numpy()
+    values = adj.values().numpy()
+    shape = adj.size()
+    scipy_adj_coo = sp.coo_matrix((values, (indices[0], indices[1])), shape=shape)
+    scipy_adj = scipy_adj_coo.tocsr()
+    # deepcopy scipy_adj
+    modified_scipy_adj = scipy_adj.copy()
+
+    # Check if [0, 0] is 1
+    if scipy_adj[0, 0] == 1:
+        # Set diagonal elements to 0
+        # modified_scipy_adj.setdiag(0)
+        # Filter out diagonal elements
+        rows, cols = scipy_adj_coo.row, scipy_adj_coo.col
+        data = scipy_adj_coo.data
+        non_diagonal_indices = rows != cols
+
+        filtered_rows = rows[non_diagonal_indices]
+        filtered_cols = cols[non_diagonal_indices]
+        filtered_data = data[non_diagonal_indices]
+
+        # Create a new CSR matrix without diagonal elements (or explicit zeros on the diagonal)
+        modified_scipy_adj = csr_matrix((filtered_data, (filtered_rows, filtered_cols)), shape=scipy_adj.shape)
+        # to coo
+        modified_scipy_adj_coo = modified_scipy_adj.tocoo()
+
+        # Convert back to PyTorch tensor if needed
+        modified_adj = torch.sparse_coo_tensor(torch.LongTensor([modified_scipy_adj_coo.row, modified_scipy_adj_coo.col]), 
+                                               torch.FloatTensor(modified_scipy_adj_coo.data), modified_scipy_adj_coo.shape)
+        return modified_adj, adj, modified_scipy_adj, scipy_adj
+    else:
+        modified_scipy_adj.setdiag(1)
+        # to coo
+        modified_scipy_adj_coo = modified_scipy_adj.tocoo()
+
+        # Convert back to PyTorch tensor if needed
+        modified_adj = torch.sparse_coo_tensor(torch.LongTensor([modified_scipy_adj_coo.row, modified_scipy_adj_coo.col]), 
+                                               torch.FloatTensor(modified_scipy_adj_coo.data), modified_scipy_adj_coo.shape)
+        return adj, modified_adj, scipy_adj, modified_scipy_adj
+
+
+def calculate_graph_metrics(adj_matrices):
+    """
+    Calculate the size and density of each graph represented by adjacency matrices.
+
+    :param adj_matrices: List of adjacency matrices in CSR format
+    :return: List of tuples containing size and density of each graph
+    """
+    metrics = []
+
+    for adj_matrix in adj_matrices:
+        # print('adj_matrix: ', adj_matrix)
+        # print(adj_matrix.todense())
+        # Number of edges: sum of non-zero elements in the matrix
+        num_edges = adj_matrix.nnz // 2  # Dividing by 2 for undirected graph
+        # print('num_edges: ', num_edges)
+
+        # Number of nodes: dimension of the matrix
+        num_nodes = adj_matrix.shape[0]
+        # print('num_nodes: ', num_nodes)
+
+        # Maximum possible number of edges in an undirected graph
+        max_edges = num_nodes * (num_nodes - 1) // 2
+        # print('max_edges: ', max_edges)
+
+        # Density: Actual edges / Maximum possible edges
+        density = num_edges / max_edges if max_edges > 0 else 0
+        # print('density: ', density)
+
+        metrics.append((num_nodes, density))
+
+    return metrics
