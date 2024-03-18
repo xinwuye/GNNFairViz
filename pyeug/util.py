@@ -12,6 +12,7 @@ from sklearn.metrics import roc_auc_score
 import umap
 import scipy.sparse as sp
 from scipy.sparse import coo_matrix, csr_matrix
+from scipy.stats import kruskal, mannwhitneyu, chi2_contingency
 import pickle
 import networkx as nx
 from networkx.readwrite import json_graph
@@ -94,7 +95,7 @@ def proj_emb(embeddings_ls, method_name, perplexity=15, seed=42):
                 embeddings_2d_ls.append(embeddings_2d)
     elif method_name == 'pca':
         projector = PCA(n_components=2)
-        for e in tqdm(embeddings_ls):
+        for e in embeddings_ls:
             if isinstance(e, torch.Tensor):
                 e = e.detach().cpu().numpy()
                 embeddings_2d = projector.fit_transform(e)
@@ -615,17 +616,31 @@ def modify_sparse_tensor_scipy(adj):
         modified_scipy_adj_coo = modified_scipy_adj.tocoo()
 
         # Convert back to PyTorch tensor if needed
-        modified_adj = torch.sparse_coo_tensor(torch.LongTensor([modified_scipy_adj_coo.row, modified_scipy_adj_coo.col]), 
-                                               torch.FloatTensor(modified_scipy_adj_coo.data), modified_scipy_adj_coo.shape)
+        # modified_adj = torch.sparse_coo_tensor(torch.LongTensor([modified_scipy_adj_coo.row, modified_scipy_adj_coo.col]), 
+        #                                        torch.FloatTensor(modified_scipy_adj_coo.data), modified_scipy_adj_coo.shape)
+        # Instead of directly converting the list of numpy arrays to a tensor,
+        # first, convert the list of numpy arrays (rows and cols) to a single numpy array.
+        rows_cols_combined = np.array([modified_scipy_adj_coo.row, modified_scipy_adj_coo.col])
+
+        # Then, use this numpy array to create the PyTorch tensor.
+        modified_adj = torch.sparse_coo_tensor(torch.LongTensor(rows_cols_combined), 
+                                            torch.FloatTensor(modified_scipy_adj_coo.data), modified_scipy_adj_coo.shape)
         return modified_adj, adj, modified_scipy_adj, scipy_adj
     else:
         modified_scipy_adj.setdiag(1)
         # to coo
         modified_scipy_adj_coo = modified_scipy_adj.tocoo()
 
-        # Convert back to PyTorch tensor if needed
-        modified_adj = torch.sparse_coo_tensor(torch.LongTensor([modified_scipy_adj_coo.row, modified_scipy_adj_coo.col]), 
-                                               torch.FloatTensor(modified_scipy_adj_coo.data), modified_scipy_adj_coo.shape)
+        # # Convert back to PyTorch tensor if needed
+        # modified_adj = torch.sparse_coo_tensor(torch.LongTensor([modified_scipy_adj_coo.row, modified_scipy_adj_coo.col]), 
+        #                                        torch.FloatTensor(modified_scipy_adj_coo.data), modified_scipy_adj_coo.shape)
+        # Instead of directly converting the list of numpy arrays to a tensor,
+        # first, convert the list of numpy arrays (rows and cols) to a single numpy array.
+        rows_cols_combined = np.array([modified_scipy_adj_coo.row, modified_scipy_adj_coo.col])
+
+        # Then, use this numpy array to create the PyTorch tensor.
+        modified_adj = torch.sparse_coo_tensor(torch.LongTensor(rows_cols_combined), 
+                                            torch.FloatTensor(modified_scipy_adj_coo.data), modified_scipy_adj_coo.shape)
         return adj, modified_adj, scipy_adj, modified_scipy_adj
 
 
@@ -656,7 +671,66 @@ def calculate_graph_metrics(adj_matrices):
         # Density: Actual edges / Maximum possible edges
         density = num_edges / max_edges if max_edges > 0 else 0
         # print('density: ', density)
-
         metrics.append((num_nodes, density))
 
     return metrics
+
+
+def analyze_bias(feat, groups, columns_categorical, selected_nodes):
+    n, m = feat.shape
+
+    # feat a df, slice the rows with selected_nodes as index
+    feat_selected = feat.iloc[selected_nodes]
+    groups_selected = groups.iloc[selected_nodes]
+    # unique_groups = np.unique(groups)
+    value_counts = groups_selected.value_counts()
+    # unique_groups = groups_selected.unique()
+    unique_groups = value_counts.index
+    ns = value_counts.values
+    num_groups = len(unique_groups)
+    bias_indicator = np.zeros((m, num_groups), dtype=bool)  # Adjusted dimensions
+    overall_bias_indicator = np.zeros(m, dtype=bool)  # One for each feature
+    if num_groups > 1:
+        for i in range(m):
+            variable_data = feat_selected.iloc[:, i]
+            if columns_categorical[i]:  # If the column is categorical
+                # get the i-th column of feat_selected as variable_data
+                # Step 1: Construct a Contingency Table
+                contingency_table = pd.crosstab(variable_data, groups_selected)
+
+                # Step 2: Perform the Chi-Square Test
+                chi2_stat, chi2_p, dof, expected = chi2_contingency(contingency_table)
+                if chi2_p <= 0.05:
+                    overall_bias_indicator[i] = True
+
+                # Pairwise tests (Chi-Square) for each group
+                for j, group_name in enumerate(unique_groups):
+                    group_data = contingency_table[group_name]
+                    other_data = contingency_table.drop(columns=group_name)
+                    stat, p, dof, expected = chi2_contingency(pd.concat([group_data, other_data], axis=1))
+                    if p <= 0.05:
+                        bias_indicator[i, j] = True  # Update for specific group
+            else:
+                df = pd.concat([variable_data, groups_selected], axis=1)
+                
+                # Global statistical test (Kruskal-Wallis)
+                kruskal_stat, kruskal_p = kruskal(*[group.iloc[:, 0].values for name, group in df.groupby("Group")])
+                if kruskal_p <= 0.05:
+                    overall_bias_indicator[i] = True
+
+                # Pairwise tests (Mann-Whitney U) for each group
+                for j, group_name in enumerate(unique_groups):
+                    group_data = df[df['Group'] == group_name][variable_data.name]
+                    other_data = df[df['Group'] != group_name][variable_data.name]
+                    
+                    stat, p = mannwhitneyu(group_data, other_data, alternative='two-sided')
+                    if p <= 0.05:
+                        bias_indicator[i, j] = True
+
+    # # Sort features by those with detected bias
+    # sorted_indices = np.argsort(overall_bias_indicator)  # Negate for descending order
+    # sorted_bias_indicator = bias_indicator[sorted_indices]
+    # # sorted_overall_bias_indicator = overall_bias_indicator[sorted_indices]
+
+    # return sorted_bias_indicator, overall_bias_indicator, ns
+    return bias_indicator, overall_bias_indicator, ns

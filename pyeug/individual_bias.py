@@ -36,8 +36,8 @@ def individual_bias_contribution(adj, features, model, group):
         # filtered_values = values[mask]
 
         # Adjust indices to account for the removed row and column
-        filtered_indices[0, filtered_indices[0] > 1] -= 1
-        filtered_indices[1, filtered_indices[1] > 1] -= 1
+        filtered_indices[0, filtered_indices[0] > i] -= 1
+        filtered_indices[1, filtered_indices[1] > i] -= 1
         src = filtered_indices[0]
         dst = filtered_indices[1]
         g_new = dgl.heterograph({('node', 'edge', 'node'): (src.cpu().numpy(), dst.cpu().numpy())})
@@ -64,15 +64,17 @@ def individual_bias_contribution(adj, features, model, group):
 
 
 def avg_dist(group_new, pred):
-    group_unique = group_new.unique()
+    # group_unique = group_new.unique()
+    # get the unique values of np array group_new
+    group_unique = np.unique(group_new)
     # for each pair of groups, compute the distance between their predictions
     dists = []
     for i in range(len(group_unique)):
         for j in range(i+1, len(group_unique)):
-            pred_i = pred[group_new == group_unique[i]]
-            pred_j = pred[group_new == group_unique[j]]
+            pred_i = pred[group_new == group_unique[i]].detach().cpu().numpy()
+            pred_j = pred[group_new == group_unique[j]].detach().cpu().numpy()
             # compute the distance between the predictions
-            dist = dist(pred_i, pred_j)
+            dist = jsdist(pred_i, pred_j)
             dists.append(dist)
 
     # Compute the average distance
@@ -80,7 +82,7 @@ def avg_dist(group_new, pred):
     return avg_dist
 
 
-def dist(set1, set2):
+def jsdist(set1, set2):
     # Estimate PDFs using KDE
     kde1 = gaussian_kde(set1.T)
     kde2 = gaussian_kde(set2.T)

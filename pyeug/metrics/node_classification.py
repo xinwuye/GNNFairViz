@@ -3,34 +3,34 @@ from sklearn.metrics import accuracy_score
 import numpy as np
 
 
-def micro_f1_std_dev(prediction, labels, groups):
-    """
-    Calculate the standard deviation of Micro-F1 scores for each sensitive subgroup.
+# def micro_f1_std_dev(prediction, labels, groups):
+#     """
+#     Calculate the standard deviation of Micro-F1 scores for each sensitive subgroup.
     
-    Parameters:
-    prediction (np.ndarray): A 1D array of predicted labels from the machine learning model.
-    labels (np.ndarray): A 1D array of ground truth labels.
-    groups (np.ndarray): A 1D array containing categorical values where each category corresponds to a sensitive subgroup.
+#     Parameters:
+#     prediction (np.ndarray): A 1D array of predicted labels from the machine learning model.
+#     labels (np.ndarray): A 1D array of ground truth labels.
+#     groups (np.ndarray): A 1D array containing categorical values where each category corresponds to a sensitive subgroup.
 
-    Returns:
-    float: The standard deviation of Micro-F1 scores across the unique groups.
+#     Returns:
+#     float: The standard deviation of Micro-F1 scores across the unique groups.
     
-    Note:
-    The input arrays must be of the same length, with each element corresponding across the arrays.
-    """
-    unique_groups = np.unique(groups)
-    micro_f1_scores = []
+#     Note:
+#     The input arrays must be of the same length, with each element corresponding across the arrays.
+#     """
+#     unique_groups = np.unique(groups)
+#     micro_f1_scores = []
 
-    for group in unique_groups:
-        group_indices = np.where(groups == group)
-        group_pred = prediction[group_indices]
-        group_labels = labels[group_indices]
+#     for group in unique_groups:
+#         group_indices = np.where(groups == group)
+#         group_pred = prediction[group_indices]
+#         group_labels = labels[group_indices]
 
-        micro_f1 = f1_score(group_labels, group_pred, average='micro')
-        micro_f1_scores.append(micro_f1)
+#         micro_f1 = f1_score(group_labels, group_pred, average='micro')
+#         micro_f1_scores.append(micro_f1)
 
-    std_dev = np.std(micro_f1_scores)
-    return std_dev
+#     std_dev = np.std(micro_f1_scores)
+#     return std_dev
 
 
 # def surrogate_di(prediction, labels, groups):
@@ -77,92 +77,92 @@ def micro_f1_std_dev(prediction, labels, groups):
 #     return mean_std_dev
 
 
-def efpr(prediction, labels, groups):
-    """
-    Calculate the mean of the standard deviations of the False Positive Rate (EFPR) 
-    across all labels for multiclass classification tasks.
+# def efpr(prediction, labels, groups):
+#     """
+#     Calculate the mean of the standard deviations of the False Positive Rate (EFPR) 
+#     across all labels for multiclass classification tasks.
 
-    Parameters:
-    predictions (np.ndarray): A 1D numpy array of predicted labels from the model.
-    labels (np.ndarray): A 1D numpy array of the ground truth labels.
-    groups (np.ndarray): A 1D numpy array indicating the sensitive group for each instance.
+#     Parameters:
+#     predictions (np.ndarray): A 1D numpy array of predicted labels from the model.
+#     labels (np.ndarray): A 1D numpy array of the ground truth labels.
+#     groups (np.ndarray): A 1D numpy array indicating the sensitive group for each instance.
 
-    Returns:
-    float: The mean standard deviation of FPR across all labels.
+#     Returns:
+#     float: The mean standard deviation of FPR across all labels.
 
-    Notes:
-    - EFPR is calculated for each label and group as the ratio of false positives to total non-positives.
-    - The function computes the standard deviation of FPR across groups for each label and then 
-      takes the mean of these standard deviations.
-    """
-    unique_groups = np.unique(groups)
-    unique_labels = np.unique(labels)
+#     Notes:
+#     - EFPR is calculated for each label and group as the ratio of false positives to total non-positives.
+#     - The function computes the standard deviation of FPR across groups for each label and then 
+#       takes the mean of these standard deviations.
+#     """
+#     unique_groups = np.unique(groups)
+#     unique_labels = np.unique(labels)
     
-    efpr_std_devs = []
+#     efpr_std_devs = []
 
-    for label in unique_labels:
-        fpr_values = []
+#     for label in unique_labels:
+#         fpr_values = []
         
-        for group in unique_groups:
-            # Define true negatives and false positives for the group and label
-            tn = np.sum((prediction[groups == group] != label) & (labels[groups == group] != label))
-            fp = np.sum((prediction[groups == group] == label) & (labels[groups == group] != label))
+#         for group in unique_groups:
+#             # Define true negatives and false positives for the group and label
+#             tn = np.sum((prediction[groups == group] != label) & (labels[groups == group] != label))
+#             fp = np.sum((prediction[groups == group] == label) & (labels[groups == group] != label))
             
-            # Calculate FPR for the group
-            fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
-            fpr_values.append(fpr)
+#             # Calculate FPR for the group
+#             fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
+#             fpr_values.append(fpr)
 
-        # Compute the standard deviation of FPR for the current label
-        std_dev = np.std(fpr_values)
-        efpr_std_devs.append(std_dev)
+#         # Compute the standard deviation of FPR for the current label
+#         std_dev = np.std(fpr_values)
+#         efpr_std_devs.append(std_dev)
 
-    # Calculate the mean of the standard deviations across all labels
-    mean_efpr_std_dev = np.mean(efpr_std_devs)
-    return mean_efpr_std_dev
+#     # Calculate the mean of the standard deviations across all labels
+#     mean_efpr_std_dev = np.mean(efpr_std_devs)
+#     return mean_efpr_std_dev
 
 
-def efnr(prediction, labels, groups):
-    """
-    Calculate the mean of the standard deviations of the False Negative Rate (EFNR) 
-    across all labels for multiclass classification tasks.
+# def efnr(prediction, labels, groups):
+#     """
+#     Calculate the mean of the standard deviations of the False Negative Rate (EFNR) 
+#     across all labels for multiclass classification tasks.
 
-    Parameters:
-    predictions (np.ndarray): A 1D numpy array of predicted labels from the model.
-    labels (np.ndarray): A 1D numpy array of the ground truth labels.
-    groups (np.ndarray): A 1D numpy array indicating the sensitive group for each instance.
+#     Parameters:
+#     predictions (np.ndarray): A 1D numpy array of predicted labels from the model.
+#     labels (np.ndarray): A 1D numpy array of the ground truth labels.
+#     groups (np.ndarray): A 1D numpy array indicating the sensitive group for each instance.
 
-    Returns:
-    float: The mean standard deviation of FNR across all labels.
+#     Returns:
+#     float: The mean standard deviation of FNR across all labels.
 
-    Notes:
-    - EFNR is calculated for each label and group as the ratio of false negatives to total actual positives.
-    - The function computes the standard deviation of FNR across groups for each label and then 
-      takes the mean of these standard deviations.
-    """
-    unique_groups = np.unique(groups)
-    unique_labels = np.unique(labels)
+#     Notes:
+#     - EFNR is calculated for each label and group as the ratio of false negatives to total actual positives.
+#     - The function computes the standard deviation of FNR across groups for each label and then 
+#       takes the mean of these standard deviations.
+#     """
+#     unique_groups = np.unique(groups)
+#     unique_labels = np.unique(labels)
     
-    efnr_std_devs = []
+#     efnr_std_devs = []
 
-    for label in unique_labels:
-        fnr_values = []
+#     for label in unique_labels:
+#         fnr_values = []
         
-        for group in unique_groups:
-            # Define false negatives and true positives for the group and label
-            fn = np.sum((prediction[groups == group] != label) & (labels[groups == group] == label))
-            tp = np.sum((prediction[groups == group] == label) & (labels[groups == group] == label))
+#         for group in unique_groups:
+#             # Define false negatives and true positives for the group and label
+#             fn = np.sum((prediction[groups == group] != label) & (labels[groups == group] == label))
+#             tp = np.sum((prediction[groups == group] == label) & (labels[groups == group] == label))
             
-            # Calculate FNR for the group
-            fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
-            fnr_values.append(fnr)
+#             # Calculate FNR for the group
+#             fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
+#             fnr_values.append(fnr)
 
-        # Compute the standard deviation of FNR for the current label
-        std_dev = np.std(fnr_values)
-        efnr_std_devs.append(std_dev)
+#         # Compute the standard deviation of FNR for the current label
+#         std_dev = np.std(fnr_values)
+#         efnr_std_devs.append(std_dev)
 
-    # Calculate the mean of the standard deviations across all labels
-    mean_efnr_std_dev = np.mean(efnr_std_devs)
-    return mean_efnr_std_dev
+#     # Calculate the mean of the standard deviations across all labels
+#     mean_efnr_std_dev = np.mean(efnr_std_devs)
+#     return mean_efnr_std_dev
 
 
 # def etpr(prediction, labels, groups):
