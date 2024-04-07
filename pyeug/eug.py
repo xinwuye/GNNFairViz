@@ -1,13 +1,16 @@
 from . import util
 from . import draw
 from . import community
-from .metrics import node_classification
+from .css import scrollbard_css
+from . import RangesetCategorical
+# from .metrics import node_classification
 # from .metrics.pdd import pdd
 from . import individual_bias
 import numpy as np
 import holoviews as hv
 from holoviews import opts
-# import os
+import os
+import pickle
 import torch
 import dgl
 import numpy as np
@@ -30,6 +33,8 @@ from bokeh.models import HelpButton, Tooltip
 hv.extension('bokeh')
 pn.extension()
 
+pn.config.raw_css.append(scrollbard_css)
+
 PERPLEXITY = 15 # german
 SEED = 42
 
@@ -37,27 +42,47 @@ SEED = 42
 np.random.seed(SEED)
 
 
-class DataGraphView(Stream):
-    xy = param.Array(default=np.array([]), constant=False, doc='XY positions.')
-    sens_name = param.List(default=[], constant=True, doc='Sensitive attribute name.')
+# class DataGraphView(Stream):
+#     xy = param.Array(default=np.array([]), constant=False, doc='XY positions.')
+#     sens_name = param.List(default=[], constant=True, doc='Sensitive attribute name.')
 
 
-class DataGraphGraphView(Stream):
-    # numpy array
-    source_id = param.Array(default=np.array([]), constant=True, doc='Source of edges.')
-    target_id = param.Array(default=np.array([]), constant=True, doc='Target of edges.')
-    sens = param.Array(default=np.array([]), constant=True, doc='Sensitive attributes.')
-    sampled_alpha = param.Array(default=np.array([]), constant=True, doc='Sampled alpha.')
-    sens_names = param.List(default=[], constant=True, doc='Sensitive attribute names.')
-    # bundle = param.Boolean(default=False, constant=True, doc='Whether to bundle edges.')
+# class DataGraphGraphView(Stream):
+#     # numpy array
+#     source_id = param.Array(default=np.array([]), constant=True, doc='Source of edges.')
+#     target_id = param.Array(default=np.array([]), constant=True, doc='Target of edges.')
+#     sens = param.Array(default=np.array([]), constant=True, doc='Sensitive attributes.')
+#     sampled_alpha = param.Array(default=np.array([]), constant=True, doc='Sampled alpha.')
+#     sens_names = param.List(default=[], constant=True, doc='Sensitive attribute names.')
+#     # bundle = param.Boolean(default=False, constant=True, doc='Whether to bundle edges.')
 
 
 class DataDensityView(Stream):
     graph_metrics = param.List(default=[], constant=True, doc='Graph metrics.')
 
 
-class DataEmbeddingView(Stream):
-    sampled_alpha = param.Array(default=np.array([]), constant=True, doc='Sampled alpha.')
+# class DataEmbeddingView(Stream):
+#     sampled_alpha = param.Array(default=np.array([]), constant=True, doc='Sampled alpha.')
+#     polygons_lst = param.List(default=[], constant=True, doc='Polygons.')
+#     max_edges_lst = param.List(default=[], constant=True, doc='Max edges.')
+
+
+class DataEmbeddingViewAlpha(Stream):
+    alpha = param.Array(default=np.array([]), constant=True, doc='Sampled alpha.')
+
+
+class DataEmbeddingViewPolys(Stream):
+    polygons_lst = param.List(default=[], constant=True, doc='Polygons.')
+    max_edges_lst = param.List(default=[], constant=True, doc='Max edges.')
+
+
+class DataEmbeddingViewXy(Stream):
+    xy = param.Array(default=np.array([]), constant=True, doc='XY positions.')
+
+
+class DataEmbeddingViewThrRange(Stream):
+    min_thr = param.Number(default=0, constant=True, doc='Min threshold.')
+    max_thr = param.Number(default=1, constant=True, doc='Max threshold.')
 
 
 class DataLegend(Stream):
@@ -94,6 +119,14 @@ class Groups(Stream):
     groups = param.Array(default=np.array([]), constant=False, doc='Groups.')
 
 
+class Contributions(Stream):
+    contributions = param.Array(default=np.array([]), constant=False, doc='Contributions.')
+
+
+class IndividualBiasMetrics(Stream):
+    individual_bias_metrics = param.Array(default=np.array([]), constant=False, doc='Individual bias metrics.')
+
+
 class EUG:
     def __init__(self, model, adj, feat, sens, sens_names, max_hop, masks, 
                  labels, emb_fnc, perplexity=PERPLEXITY, feat_names=None):
@@ -102,8 +135,11 @@ class EUG:
             self.feat_names = np.array([str(i) for i in range(feat.shape[-1])])
         else:
             self.feat_names = feat_names
-        self.model = copy.deepcopy(model)        
+        # self.model = copy.deepcopy(model)        
+        self.model = model
+        self.model.eval()
         self.adj = adj
+        self.adj_mul_indices = []
         self.adj0, self.adj1, self.adj0_scipy, self.adj1_scipy = util.modify_sparse_tensor_scipy(adj)
         self.feat = feat
         self.sens = sens
@@ -123,9 +159,8 @@ class EUG:
             g = g.int().to(device)
 
         self.g = g
-        model.eval()
         with torch.no_grad():
-            logits = model(self.g, self.feat)
+            logits = self.model(self.g, self.feat)
         self.logits = logits
         self.predictions = torch.argmax(logits, dim=1).cpu().numpy()
 
@@ -152,28 +187,28 @@ class EUG:
 
         self.embeddings_pca = util.proj_emb(self.embeddings, 'pca')
         self.embeddings_tsne = []
-        self.embeddings_umap = []
+        self.embeddings_umap = util.proj_emb(self.embeddings, 'umap')
 
-        self.xy = np.array(self.embeddings_pca)
+        self.xy = np.array(self.embeddings_umap)
         # self.masked_adj_unfair = np.zeros_like(adj)
         # self.masked_adj_fair = np.zeros_like(adj)
         # self.feat_mask_unfair = np.zeros(self.feat.shape[-1])
         # self.feat_mask_fair = np.zeros(self.feat.shape[-1])
-        self.layers = list(range(len(self.embeddings)))
+        self.layers = list(range(1, len(self.embeddings)+1))
 
-        self.metric_name_dict = {
-                        # 'SD MF1': 'micro_f1_std_dev',
-                        # 'DI': 'surrogate_di',
-                        # 'EFPR': 'efpr',
-                        # 'EFNR': 'efnr',
-                        # 'ETPR': 'etpr',
-                        'D SP': 'delta_dp_metric',
-                        'Dm SP': 'max_diff_delta_dp',
-                        'D EO': 'delta_eo_metric',
-                        'D Acc': 'delta_accuracy_metric',
-                        'SD Acc': 'sigma_accuracy_metric',
-                        # 'D TED': 'delta_ted_metric',
-                        }
+        # self.metric_name_dict = {
+        #                 # 'SD MF1': 'micro_f1_std_dev',
+        #                 # 'DI': 'surrogate_di',
+        #                 # 'EFPR': 'efpr',
+        #                 # 'EFNR': 'efnr',
+        #                 # 'ETPR': 'etpr',
+        #                 'D SP': 'delta_dp_metric',
+        #                 'Dm SP': 'max_diff_delta_dp',
+        #                 'D EO': 'delta_eo_metric',
+        #                 'D Acc': 'delta_accuracy_metric',
+        #                 'SD Acc': 'sigma_accuracy_metric',
+        #                 # 'D TED': 'delta_ted_metric',
+        #                 }
 
         # self.colors = ['#d2bb4c', '#b054c1', '#82cd53', '#626ccc', 
         #     '#d05d2e', '#6bd4a3', '#ce478c', '#5c7d39', '#bf4b56', 
@@ -189,12 +224,14 @@ class EUG:
         #     for metric_type in self.metric_types:
         #         self.selectable_metrics.append(f'{layer}-{metric_type}')
 
-        # sampled_alpha = 1000 1s
+        # sampled_alpha = 1000 1s 
         self.n_nodes = adj.shape[0]
         self.node_indices = np.arange(self.n_nodes)
-        self.selected_nodes = self.node_indices
-        self.previous_selected_nodes = self.selected_nodes
-        self.selected_nodes_stream = SelectedNodes(selected_nodes=self.selected_nodes)
+        # self.selected_nodes = self.node_indices 
+        # self.previous_selected_nodes = self.selected_nodes
+        # self.selected_nodes_stream = SelectedNodes(selected_nodes=self.selected_nodes)
+        self.selected_nodes_stream = SelectedNodes(selected_nodes=self.node_indices)
+        self.selected_nodes_stream.add_subscriber(self._selected_nodes_stream_subscriber)
         # sampled_alpha = np.zeros(self.n_nodes)
         # # self.init_sample_size = 200
         # self.init_sample_size = self.n_nodes
@@ -238,7 +275,7 @@ class EUG:
         self.width = width
         padding = 15
         self.control_panel_height = int(height/3-35-30)
-        self.control_panel_width = int(width/4-30)
+        self.control_panel_width = int(width/4-20)
         self.graph_view_height = int(height/3-35)-padding
         self.graph_view_width = int(width/4)-padding
         self.fairness_metric_view_height = int(height/3-35)-padding
@@ -247,6 +284,8 @@ class EUG:
         self.density_view_width = int(width/4)-padding
         self.subgraph_view_height = int(height/3-35)-padding
         self.subgraph_view_width = int(width*3/4/2)-padding
+        self.structural_bias_overview_height = int(height*2/3-35)-padding
+        self.structural_bias_overview_width = int(width/4)-padding
         # self.attribute_view_height = int(height/2/2-35)
         # self.attribute_view_width = int(width*10/14)
         self.correlation_view_height = int(height/3-35)-padding
@@ -259,7 +298,7 @@ class EUG:
         self.sens_name_selector = pn.widgets.MultiChoice(name='Sensitive Attribute', 
                                                          options=self.sens_names, 
                                                          value = [self.sens_names[0], ], 
-                                                         width=int(self.control_panel_width*0.6))
+                                                         width=int(self.control_panel_width*0.63))
         self.previous_sens_name_value = self.sens_name_selector.value
         # self.sens_name_confirm_control_panel_button = pn.widgets.Button(name='Confirm', button_type='default')
         # self.sens_name_confirm_control_panel_button.on_click(self._sens_name_confirm_control_panel_button_callback)
@@ -270,9 +309,9 @@ class EUG:
 
         # widget for fairness metric view
         # a multi-select widget for selecting "train", "val", "test", "other"
-        self.data_selector = pn.widgets.MultiChoice(name='Data', value=['train', 'val', 'test', 'other'],
-            options=['train', 'val', 'test', 'other'],
-            width=int(self.control_panel_width*0.6),
+        self.data_selector = pn.widgets.MultiChoice(name='Data', value=['Train', 'Val', 'Test', 'Unlabeled'],
+            options=['Train', 'Val', 'Test', 'Unlabeled'],
+            width=int(self.control_panel_width*0.63),
             )
         self.previous_data_selector_value = self.data_selector.value
         sens_name_confirm_control_panel_button = pn.widgets.Button(name='Confirm', button_type='default')
@@ -285,7 +324,7 @@ class EUG:
         # wh_graph_view = min(self.graph_view_width, self.graph_view_height-35)
         # self.data_graph_view = DataGraphView(xy=self.xy, sens_name=self.sens_name_selector.value)
 
-        # self.graph_view_scatter = hv.DynamicMap(pn.bind(draw.draw_graph_view, layer=self.layer, bundle=bundle, colors=self.colors), 
+        # self.graph_view_scatter = hv.DynamicMap(pn.bind(draw.draw_graph_view, layer=self.layer_selection, bundle=bundle, colors=self.colors), 
         #     # streams=[self.data_graph_graph_view, self.data_graph_view, self.selection]) \
         #     streams=[self.data_graph_graph_view, self.data_graph_view]) \
         #     .opts(framewise=True, 
@@ -295,12 +334,17 @@ class EUG:
         #             width=int(self.graph_view_width*0.93),
         #             height=int(self.graph_view_height*0.95),
         #           shared_axes=False,
-        #           )
+        #           ) 
 
         # widget for graph view
-        self.layer = pn.widgets.Select(options=self.layers, name='Layer', width=200)
+        self.layer_selection = pn.widgets.Select(options=self.layers, name='Layer', width=200)
+
+        self.projection_selection = pn.widgets.Select(options=['UMAP', 'PCA', 't-SNE'], name='Projection', width=200)
+        # watch projection selection
+        self.projection_selection.param.watch(self._projection_selection_callback, 'value')
+
         self.node_sample_size_slider = pn.widgets.IntSlider(name='Node Sample Size', 
-                                                            start=1, 
+                                                            start=0, 
                                                             end=self.n_nodes, 
                                                             step=1, 
                                                             # value=self.init_sample_size, 
@@ -315,22 +359,77 @@ class EUG:
         # sample_idx = np.random.choice(np.arange(self.n_nodes), self.init_sample_size, replace=False)
         # sampled_alpha[sample_idx] = 1
         # create ones as sampled_alpha
-        sampled_alpha = np.ones(self.n_nodes)
-        self.data_embedding_view = DataEmbeddingView(sampled_alpha=sampled_alpha)
-        self.graph_view_scatter = hv.DynamicMap(pn.bind(draw.draw_embedding_view, 
-                                                        xy=self.xy,
-                                                        layer=self.layer, 
-                                                        colors=self.colors), 
-            streams=[self.groups_stream, self.data_embedding_view]) \
-            .opts(
-                # framewise=True, 
-                  xaxis=None, yaxis=None, 
-                #   width=int(wh_graph_view*0.75), 
-                #   height=int(wh_graph_view*0.75),
-                    width=int(self.graph_view_width*0.6),
-                    height=int(self.graph_view_height*0.95),
-                  shared_axes=False,
-                  )
+        self.sampled_alpha = np.ones(self.n_nodes)
+        # self.data_embedding_view = DataEmbeddingView(sampled_alpha=sampled_alpha,
+        #                                              xy=self.xy)
+        self.data_embedding_view_xy = DataEmbeddingViewXy(xy=self.xy)
+        self.data_embedding_view_xy.add_subscriber(self._prepare_data_embedding_view)
+        self.groups_stream.add_subscriber(self._prepare_data_embedding_view)
+        self.layer_selection.param.watch(self._prepare_data_embedding_view, 'value') 
+        # self.data_embedding_view = DataEmbeddingView(sampled_alpha=sampled_alpha)
+        self.data_embedding_view_alpha = DataEmbeddingViewAlpha(alpha=self.sampled_alpha) 
+        self.data_embedding_view_polys = DataEmbeddingViewPolys()
+
+        self.data_embedding_view_thr_range = DataEmbeddingViewThrRange()
+        self.data_embedding_view_thr_range.add_subscriber(self._update_thr_range)
+
+        self.embedding_view_thr_slider = pn.widgets.FloatSlider(name='RangeSet Threshold', 
+                                                                start=self.data_embedding_view_thr_range.min_thr, 
+                                                                end=self.data_embedding_view_thr_range.max_thr,
+                                                                step=0.01, value=0.5, 
+                                                                width=200)
+
+        self._prepare_data_embedding_view('')
+        # self.graph_view_scatter_selection1d = hv.streams.Selection1D()
+        # self.graph_view_scatter = hv.DynamicMap(pn.bind(draw.draw_embedding_view, 
+        #                                                 layer=self.layer_selection, 
+        #                                                 colors=self.colors,
+        #                                                 threshold=self.embedding_view_thr_slider,), 
+        #     streams=[self.groups_stream, 
+        #              self.data_embedding_view_xy,
+        #              self.data_embedding_view,
+        #              self.graph_view_scatter_selection1d,
+        #              ]) \
+        #     .opts(
+        #           xaxis=None, yaxis=None, 
+        #             width=int(self.graph_view_width*0.6),
+        #             height=int(self.graph_view_height*0.95),
+        #           shared_axes=False,
+        #           )
+        self.graph_view_scatter = hv.DynamicMap(pn.bind(draw.draw_embedding_view_scatter,
+                                                        layer=self.layer_selection,
+                                                        colors=self.colors,),
+            streams=[self.groups_stream,
+                     self.data_embedding_view_xy,
+                     self.data_embedding_view_alpha,
+                     ])
+        
+        self.graph_view_scatter_selection1d = hv.streams.Selection1D(source=self.graph_view_scatter)
+
+        # watch it
+        self.graph_view_scatter_selection1d.add_subscriber(self._graph_view_scatter_selection1d_subscriber) 
+        
+        self.graph_view_polys = hv.DynamicMap(pn.bind(draw.draw_embedding_view_polys,
+                                                      layer=self.layer_selection,
+                                                      colors=self.colors,
+                                                      threshold=self.embedding_view_thr_slider,),
+            streams=[self.groups_stream,
+                     self.data_embedding_view_xy,
+                     self.data_embedding_view_polys,
+                     ])
+        
+        self.graph_view_square = hv.DynamicMap(pn.bind(draw.draw_embedding_view_square,
+                                                       layer=self.layer_selection,),
+            streams=[
+                     self.data_embedding_view_xy,
+                     self.graph_view_scatter_selection1d
+                     ])
+        
+        self.graph_view_overlay = (self.graph_view_square * self.graph_view_scatter * self.graph_view_polys).opts(
+            width=int(self.graph_view_width*0.6),
+            height=int(self.graph_view_height*0.95),
+            shared_axes=False,
+        ) 
         
         self.graph_view_legend = hv.DynamicMap(pn.bind(draw.draw_embedding_view_legend,
                                                        colors=self.colors,),
@@ -342,12 +441,12 @@ class EUG:
         # self.graph_view_legend.object = draw.draw_embedding_view_legend(colors=self.colors,
         #                                                                 groups=self.groups_stream.groups)
 
-        # self.graph_view_xdist = hv.DynamicMap(pn.bind(draw.draw_distribution, layer=self.layer, sens=self.sens, sens_names=self.sens_names, 
+        # self.graph_view_xdist = hv.DynamicMap(pn.bind(draw.draw_distribution, layer=self.layer_selection, sens=self.sens, sens_names=self.sens_names, 
         #     colors=self.colors, x_or_y='x'),
         #     streams=[self.data_graph_view]) \
         #     .opts(height=int(wh_graph_view*0.25))
 
-        # self.graph_view_ydist = hv.DynamicMap(pn.bind(draw.draw_distribution, layer=self.layer, sens=self.sens, sens_names=self.sens_names,
+        # self.graph_view_ydist = hv.DynamicMap(pn.bind(draw.draw_distribution, layer=self.layer_selection, sens=self.sens, sens_names=self.sens_names,
         #     colors=self.colors, x_or_y='y'),
         #     streams=[self.data_graph_view]) \
         #     .opts(width=int(wh_graph_view*0.25))
@@ -360,12 +459,13 @@ class EUG:
             # self.graph_view_scatter << self.graph_view_ydist << self.graph_view_xdist,
             # self.graph_view_scatter + self.graph_view_legend,
             pn.Row(
-                self.graph_view_scatter,
+                # self.graph_view_scatter,
+                self.graph_view_overlay,
                 self.graph_view_legend,
             ),
             # scatter,
             hide_header=True,
-            name='Graph View',
+            name='Embedding View',
             # height=int(height/2-80), 
             # width=int(width/3),
             height=self.graph_view_height,
@@ -373,7 +473,8 @@ class EUG:
             )
         
         self.graph_view_widgets = pn.WidgetBox(
-            self.layer, 
+            self.layer_selection, 
+            self.projection_selection,
             self.node_sample_size_slider,
             sample_button,
             # width=int(width/3), 
@@ -389,70 +490,45 @@ class EUG:
 
 ### fairness metric view
         self.fairness_metric_view_chart = pn.pane.HoloViews()
-        # # Create buttons and labels
-        # labeled_mask = self.labels != -1
-        # labeled_predictions = self.predictions[labeled_mask]
-        # labeled_labels = self.labels[labeled_mask]
-        # labeled_sens = self.sens[0][labeled_mask]
-        # letter_values = {'SD MF1': [node_classification.micro_f1_std_dev(labeled_predictions, labeled_labels, labeled_sens), (0.0, 0.5)],
-        #                 #  'DI': node_classification.surrogate_di(labeled_predictions, labeled_labels, labeled_sens),
-        #                  'EFPR': [node_classification.efpr(labeled_predictions, labeled_labels, labeled_sens), (0.0, 0.5)],
-        #                  'EFNR': [node_classification.efnr(labeled_predictions, labeled_labels, labeled_sens), (0.0, 0.5)],
-        #                 #  'ETPR': node_classification.etpr(labeled_predictions, labeled_labels, labeled_sens),
-        #                  'D SP': [node_classification.delta_dp_metric(labeled_predictions, labeled_labels, labeled_sens), (0.0, 0.5)],
-        #                  'Dm SP': [node_classification.max_diff_delta_dp(labeled_predictions, labeled_labels, labeled_sens), (0.0, 1.0)],
-        #                  'D EO': [node_classification.delta_eo_metric(labeled_predictions, labeled_labels, labeled_sens), (0.0, 0.5)],
-        #                  'D Acc': [node_classification.delta_accuracy_metric(labeled_predictions, labeled_labels, labeled_sens), (0.0, 1.0)],
-        #                  'SD Acc': [node_classification.sigma_accuracy_metric(labeled_predictions, labeled_labels, labeled_sens), (0.0, 0.5)],
-        #                 #  'D TED': node_classification.delta_ted_metric(labeled_predictions, labeled_labels, labeled_sens),
-        #                  }
-        # self.fairness_metric_view_labels = []
-        # self.items = []
-        # self.metric_widgets = []
-        # for letter, [value, bounds] in letter_values.items():
-        #     # button = pn.widgets.Button(name=letter, width=100)
-        #     # button = pn.widgets.Button(name='🔍', height=20)
-        #     button = pn.widgets.Button(name=letter, height=20, width=60)
-        #     # button.on_click(self._update_fairness_metric_detail)
-        #     pn.bind(self._update_fairness_metric_detail, button, metric_name=letter, watch=True)
-        #     # label = pn.widgets.StaticText(value='{:.2f}'.format(value))
-        #     label = pn.indicators.LinearGauge(
-        #         name=letter, value=value, bounds=bounds, format='{value:.2f}',
-        #         horizontal=True, width=20, height=40, title_size='3px', 
-        #         )
-        #     # self.fairness_metric_view_labels.append(label)
-        #     self.items.append(pn.Row(pn.Column(button, width=60), pn.Column(label), width=105))
-        #     self.metric_widgets.append(label)
+        self.fairness_metric_view_chart_column = pn.Column(self.fairness_metric_view_chart)
 
-        self.fairness_metric_view_bar_tap = streams.SingleTap()
-        self.fairness_metric_view_bar = hv.DynamicMap(pn.bind(draw.draw_fairness_metric_view_bar, 
-                                                              labels=self.labels,
-                                                              predictions=self.predictions),
-                                                      streams=[self.selected_nodes_stream, 
-                                                               self.groups_stream,
-                                                               self.fairness_metric_view_bar_tap])
-        self.fairness_metric_view_bar.opts(
-            opts.Bars(width=int(self.fairness_metric_view_width*0.5),
-                      height=int(self.fairness_metric_view_height*0.95)),
+        self.fairness_metric_view_chart_eod_radio = pn.widgets.RadioButtonGroup(
+            options=['TPR', 'FPR'], value='TPR', button_type='default', width=200)
+
+        # self.fairness_metric_view_bar_tap = streams.SingleTap()
+        # self.fairness_metric_view_bar = hv.DynamicMap(pn.bind(draw.draw_fairness_metric_view_bar, 
+        #                                                       labels=self.labels,
+        #                                                       predictions=self.predictions),
+        #                                               streams=[self.selected_nodes_stream, 
+        #                                                        self.groups_stream,
+        #                                                     #    self.fairness_metric_view_bar_tap
+        #                                                        ])
+        # self.fairness_metric_view_bar_selection1d = hv.streams.Selection1D(source=self.fairness_metric_view_bar)
+        # self.fairness_metric_view_bar.opts(
+        #     opts.Bars(width=int(self.fairness_metric_view_width*0.5),
+        #               height=int(self.fairness_metric_view_height*0.95)),
+        # )
+        # self.fairness_metric_view_bar_tap.add_subscriber(self._update_fairness_metric_detail)
+
+        self.fairness_metric_view_value_bar = hv.DynamicMap(pn.bind(draw.draw_fairness_metric_view_value_bar,
+                                                                     labels=self.labels,
+                                                                     predictions=self.predictions),
+                                                                streams=[self.selected_nodes_stream, 
+                                                                        self.groups_stream,
+                                                                        ])
+        self.fairness_metric_view_range_bar = draw.draw_fairness_metric_view_range_bar()
+        self.fairness_metric_view_bar = (self.fairness_metric_view_value_bar * self.fairness_metric_view_range_bar).opts(
+            width=int(self.fairness_metric_view_width*0.5),
+            height=int(self.fairness_metric_view_height*0.95),
         )
-        self.fairness_metric_view_bar_tap.add_subscriber(self._update_fairness_metric_detail)
-        # self.fairness_metric_view_widgets = pn.WidgetBox(
-        #     pn.Row(
-        #         self.data_selector,
-        #         confirm_control_panel_button
-        #         ),
-        #     # width=int(width/3), 
-        #     # height=int(height/2-80),
-        #     height=self.fairness_metric_view_height,
-        #     width=self.fairness_metric_view_width,
-        #     name='Settings',
-        #     )
-        
+        self.fairness_metric_view_value_bar_selection1d = hv.streams.Selection1D(source=self.fairness_metric_view_value_bar)
+        self.fairness_metric_view_value_bar_selection1d.add_subscriber(self._update_fairness_metric_detail)
+
         self.fairness_metric_view = pn.Card(
             pn.Row(
                 # pn.Column(*self.items), 
-                self.fairness_metric_view_bar,
-                self.fairness_metric_view_chart
+                pn.Column(self.fairness_metric_view_bar), 
+                self.fairness_metric_view_chart_column,
                 ),
             hide_header=True,
             name='Fairness Metric View',
@@ -475,7 +551,8 @@ class EUG:
         #                     idx_val, 
         #                     self.model, 
         #                     self.g)
-        self.individual_bias_metrics = individual_bias.individual_bias_contribution(self.adj, self.feat, self.model, self.sens[0])
+        self.individual_bias_metrics_stream = IndividualBiasMetrics(individual_bias_metrics=individual_bias.individual_bias_contribution(self.adj, self.feat, self.model, self.sens[0]))
+        # self.individual_bias_metrics = individual_bias.individual_bias_contribution(self.adj, self.feat, self.model, self.sens[0])
         # feat_train = self.feat[self.train_mask].cpu().numpy()
         feat_np = self.feat.cpu().numpy()
         # self.columns_categorical = util.check_unique_values(feat_train)
@@ -501,16 +578,21 @@ class EUG:
                 adj_mul = torch.sparse.mm(adj_mul, self.adj0)
             d = adj_mul.sum(axis=1).to_dense()
             computational_graph_degrees.append(d)
+
+            indices = adj_mul.coalesce().indices()
+            self.adj_mul_indices.append(indices)
+
         # convert computational_graph_degrees to a np array
         self.computational_graph_degrees = torch.stack(computational_graph_degrees).cpu().numpy()    
-        pearson_r_results_degree = [stats.pearsonr(row, self.individual_bias_metrics) 
+        # pearson_r_results_degree = [stats.pearsonr(row, self.individual_bias_metrics) 
+        pearson_r_results_degree = [stats.pearsonr(row, self.individual_bias_metrics_stream.individual_bias_metrics) 
                                     for row in self.computational_graph_degrees]
         pearson_correlations_degree = [r[0] for r in pearson_r_results_degree]
         pearson_p_vals_degree = [r[1] for r in pearson_r_results_degree]  
 
         # self.data_correlation_view_selection_continuous = DataCorrelationViewSelection(correlations=pearson_correlations, p_vals=pearson_p_vals)
         # self.data_correlation_view_selection_categorical = DataCorrelationViewSelection(correlations=pointbiserial_correlations, p_vals=pointbiserial_p_vals)
-        self.data_correlation_view_selection_degree = DataCorrelationViewSelection(correlations=pearson_correlations_degree, p_vals=pearson_p_vals_degree)
+        # self.data_correlation_view_selection_degree = DataCorrelationViewSelection(correlations=pearson_correlations_degree, p_vals=pearson_p_vals_degree)
         
         # self.height_correlation_view_selection_continuous = 40
         # self.height_correlation_view_selection_categorical = self.height_correlation_view_selection_continuous
@@ -566,25 +648,51 @@ class EUG:
         self.correlation_view_selection = pn.widgets.Select(name='Hops', options=options_dict,
                                                             width=int(self.correlation_view_width*0.93),
             )
+        
         # self.correlation_view_degree = hv.DynamicMap(pn.bind(draw.draw_correlation_view_hex, feat=self.computational_graph_degrees, metric=self.individual_bias_metrics),
         #                                             # streams=[streams.SingleTap(source=self.correlation_view_selection_degree)]) \
         #                                             streams=[single_tap_correlation_view_selection_degree, self.selected_nodes_stream]) \
-        self.correlation_view_degree = hv.DynamicMap(pn.bind(draw.draw_correlation_view_hex, 
-                                                             feat=self.computational_graph_degrees, 
-                                                             metric=self.individual_bias_metrics,
-                                                             index=self.correlation_view_selection),
-                                                    # streams=[streams.SingleTap(source=self.correlation_view_selection_degree)]) \
-                                                    streams=[self.selected_nodes_stream]) \
-            .opts(width=int(self.correlation_view_width*0.93),
-                    height=int(self.correlation_view_height*0.95)-60,
-                    shared_axes=False,
-                    )
-
-        # correlation_view_legend = draw.draw_correlation_view_legend() \
-        #     .opts(width=int(self.correlation_view_width*0.8),
-        #             height=40,
+        # self.correlation_view_degree = hv.DynamicMap(pn.bind(draw.draw_correlation_view_hex, 
+        #                                                      feat=self.computational_graph_degrees, 
+        #                                                     #  metric=self.individual_bias_metrics,
+        #                                                      index=self.correlation_view_selection),
+        #                                             # streams=[streams.SingleTap(source=self.correlation_view_selection_degree)]) \
+        #                                             streams=[self.selected_nodes_stream, 
+        #                                                      self.individual_bias_metrics_stream,]) \
+        #     .opts(width=int(self.correlation_view_width*0.93),
+        #             height=int(self.correlation_view_height*0.95)-60,
         #             shared_axes=False,
         #             )
+        self.correlation_view_hex = hv.DynamicMap(pn.bind(draw.draw_correlation_view_hex, 
+                                                             feat=self.computational_graph_degrees, 
+                                                            #  metric=self.individual_bias_metrics,
+                                                             index=self.correlation_view_selection),
+                                                    # streams=[streams.SingleTap(source=self.correlation_view_selection_degree)]) \
+                                                    streams=[self.individual_bias_metrics_stream,])
+        self.correlation_view_scatter = hv.DynamicMap(pn.bind(draw.draw_correlation_view_scatter,
+                                                                feat=self.computational_graph_degrees, 
+                                                                index=self.correlation_view_selection,
+                                                                colors=self.colors,),
+                                                        streams=[self.groups_stream, 
+                                                                 self.individual_bias_metrics_stream,
+                                                                 self.data_embedding_view_alpha,])
+        
+        self.correlation_view_scatter_selection1d = hv.streams.Selection1D(source=self.correlation_view_scatter)
+        # self.correlation_view_scatter_selection1d.add_subscriber(self._correlation_view_scatter_selection1d_subscriber)
+        self.correlation_view_scatter_selection1d.add_subscriber(self._graph_view_scatter_selection1d_subscriber)
+
+        self.correlation_view_scatter_square = hv.DynamicMap(pn.bind(draw.draw_correlation_view_square,
+                                                                     feat=self.computational_graph_degrees,
+                                                                     hop=self.correlation_view_selection,),
+            streams=[self.individual_bias_metrics_stream,
+                     self.correlation_view_scatter_selection1d,
+                    ])
+
+
+        self.correlation_view_degree = (self.correlation_view_hex * self.correlation_view_scatter_square * self.correlation_view_scatter).opts(width=int(self.correlation_view_width*0.93),
+            height=int(self.correlation_view_height*0.95)-60,
+            shared_axes=False,
+        )
 
         self.correlation_view = pn.Card(
             # pn.Row(
@@ -671,14 +779,28 @@ class EUG:
         #                                          streams=[self.selected_nodes_stream, self.groups_stream])
 
         # overview
+        contributions = util.calc_contributions(
+            model=self.model,
+            g=self.g,
+            feat=self.feat,
+            selected_nodes=self.selected_nodes_stream.selected_nodes,
+            groups=self.groups_stream.groups)
+        self.contributions_stream = Contributions(contributions=contributions)
+
+        self.groups_stream.add_subscriber(self._update_correlations_groups_callback)
+
         self.attribute_view_overview_tap = streams.SingleTap()
         self.attribute_view_overview = hv.DynamicMap(pn.bind(draw.draw_attribute_view_overview, 
                                                              feat=pd.DataFrame(self.feat.cpu().numpy(), columns=self.feat_names),
                                                              columns_categorical=self.columns_categorical,
-                                                             individual_bias_metrics=self.individual_bias_metrics,),
+                                                             hw_ratio=int(self.diagnostic_panel_height*0.5)/int(self.diagnostic_panel_width*0.93)
+                                                            #  individual_bias_metrics=self.individual_bias_metrics,
+                                                             ),
                                                         streams=[self.selected_nodes_stream, 
                                                                  self.groups_stream,
-                                                                 self.attribute_view_overview_tap])
+                                                                 self.attribute_view_overview_tap,
+                                                                 self.individual_bias_metrics_stream,
+                                                                 self.contributions_stream,])
         # watch the tap
         self.attribute_view_overview_tap.add_subscriber(self._update_attribute_view_detail_correlation)
         # detail
@@ -720,8 +842,18 @@ class EUG:
 ### density view
         # Create the scatter plot
         self.extract_communities_args = community.process_graph(self.adj0)
+        self._save_extract_communities_args()
+        loaded_extract_communities_args = self._load_extract_communities_args()
         # deep copy self.extract_communities_args, which is a tuple
-        self.node_communities = community.extract_communities(*copy.deepcopy(self.extract_communities_args), 0.5)
+        self.node_communities = community.extract_communities(community.Tree(), 
+                                                              *loaded_extract_communities_args, 
+                                                              self.extract_communities_args[3], 
+                                                              0.5)
+
+        # self.node_communities = community.extract_communities(community.Tree(), 
+        #                                                       *copy.deepcopy(self.extract_communities_args[1: 3]), 
+        #                                                       self.extract_communities_args[3], 
+        #                                                       0.5)
         self.communities = []
         for indices in self.node_communities:
             # Convert set of indices to sorted list for slicing
@@ -752,7 +884,7 @@ class EUG:
         # watch it
         self.selected_communities_dropdown.param.watch(self._update_subgraph_view, 'value')
         # Slider for min_threshold
-        self.min_threshold_slider = pn.widgets.FloatSlider(name='Minimum Density Threshold', start=0.0, end=1.0, step=0.01, value=0.5)
+        self.min_threshold_slider = pn.widgets.FloatSlider(name='Minimum Density Threshold', start=0.0, end=1.0, step=0.01, value=0.5, width=200)
 
         # Button to recalculate and redraw plots
         min_threshold_slider_button = pn.widgets.Button(name='Update Communities')
@@ -803,7 +935,7 @@ class EUG:
         #     width=self.subgraph_view_width,
         #     )
         
-# diagnostic panel
+### diagnostic panel
         self.attribute_view_overview.opts(
             height=int(self.diagnostic_panel_height*0.5),
             width=int(self.diagnostic_panel_width*0.93),
@@ -838,9 +970,24 @@ class EUG:
             height=self.diagnostic_panel_height,
             width=self.diagnostic_panel_width,
         )
-        
+
+### structural bias overview
+        self.structural_bias_overview = pn.Card(
+            self.correlation_view_selection,
+            self.correlation_view_degree,
+            self.selected_communities_dropdown,
+            self.density_view_scatter,
+            hide_header=True,
+            name='Structural Bias Overview',
+            # height=int(height/2-80),
+            # width=int(width/3),
+            height=self.structural_bias_overview_height,
+            width=self.structural_bias_overview_width,
+        )       
 # control panel
-        self.control_panel = pn.WidgetBox(
+        self.control_panel = pn.Card(
+            pn.Column(
+            '### Global Selections',
             pn.Row(
                 self.sens_name_selector, 
                 sens_name_confirm_control_panel_button,
@@ -849,7 +996,21 @@ class EUG:
                 self.data_selector,
                 data_select_control_panel_button,
             ),
+            pn.layout.Divider(),
+            '### Embedding View Settings',
+            self.layer_selection, 
+            self.projection_selection,
+            self.node_sample_size_slider,
+            sample_button,
+            self.embedding_view_thr_slider,
+            pn.layout.Divider(),
+            '### Structural Bias Overview Settings',
+            self.min_threshold_slider, 
+            min_threshold_slider_button,
+            scroll=True,
+            ),
             name='Control Panel',
+            hide_header=True, 
             height=self.control_panel_height, 
             width=self.control_panel_width,
         )
@@ -907,19 +1068,21 @@ class EUG:
         app[0, 0] = pn.Tabs(
             self.control_panel,
         )
+        # app[1, 0] = pn.Tabs(
+        #     self.correlation_view,
+        # )
+        # app[2, 0] = pn.Tabs(
+        #     self.density_view,
+        #     self.density_view_widgets,
+        app[1: 3, 0] = pn.Tabs(
+            self.structural_bias_overview,
+        )
         app[0, 1: 3] = pn.Tabs(
             self.fairness_metric_view,
         )
         app[0, 3] = pn.Tabs(
             self.graph_view,
-            self.graph_view_widgets,
-        )
-        app[1, 0] = pn.Tabs(
-            self.correlation_view,
-        )
-        app[2, 0] = pn.Tabs(
-            self.density_view,
-            self.density_view_widgets,
+            # self.graph_view_widgets,
         )
         app[1: 3, 1: 4] = pn.Tabs(
             self.diagnostic_panel,
@@ -930,10 +1093,13 @@ class EUG:
     def _sample_button_callback(self, event):
         node_sample_size = self.node_sample_size_slider.value
         # edge_sample_size = self.edge_sample_size_slider.value
-
-        sampled_alpha = np.zeros(self.n_nodes)
-        sample_idx = np.random.choice(np.arange(self.n_nodes), node_sample_size, replace=False)
-        sampled_alpha[sample_idx] = 1
+        if node_sample_size < self.n_nodes:
+            sampled_alpha = np.zeros(self.n_nodes)
+            sample_idx = np.random.choice(np.arange(self.n_nodes), node_sample_size, replace=False)
+            sampled_alpha[sample_idx] = 1
+            self.sampled_alpha = sampled_alpha
+        else:
+            self.sampled_alpha = np.ones(self.n_nodes)
         # # convert adj to pd.dataframe consisting of two cols, source and target representing the edges
         # sampled_edges = self.edges[np.isin(self.edges[:,0], sample_idx)]
         # sampled_edges = sampled_edges[np.isin(sampled_edges[:,1], sample_idx)]
@@ -943,10 +1109,20 @@ class EUG:
         # source = sampled_edges[:, 0]
         # target = sampled_edges[:, 1]
 
-        self.graph_view_scatter.event(sampled_alpha=sampled_alpha, 
-                                    #   source_id=source, 
-                                    #   target_id=target
-                                      )
+        # self.graph_view_scatter.event(sampled_alpha=sampled_alpha, 
+        #                             #   source_id=source, 
+        #                             #   target_id=target
+        #                               )
+        
+        selected_nodes = self.selected_nodes_stream.selected_nodes
+        # create a np array containing 1 and 0.2 representing the alpha value of the nodes selected and not selected
+        selected_alpha = np.zeros(self.n_nodes)
+        selected_alpha[selected_nodes] = 1
+        # not selected nodes are set to 0.2
+        selected_alpha[selected_alpha == 0] = 0
+        alpha = selected_alpha * self.sampled_alpha 
+
+        self.data_embedding_view_alpha.event(alpha=alpha)
 
     def _sens_name_confirm_control_panel_button_callback(self, event):
         # # check if the data_selector value has changed
@@ -969,7 +1145,7 @@ class EUG:
         # self._update_fairness_metric_view()
 
         # update graph view
-        self._update_graph_view(self.previous_selected_nodes)
+        # self._update_graph_view(self.previous_selected_nodes)
 
         # update correlation view
         self._update_correlation_view()
@@ -984,39 +1160,49 @@ class EUG:
         # self.previous_selected_nodes = self.selected_nodes
         self.previous_sens_name_value = self.sens_name_selector.value
 
+    # def _data_select_control_panel_button_callback(self, event):
+    #     previous_selected_nodes = self.previous_selected_nodes
+    #     # # check if the data_selector value has changed
+    #     # if self.data_selector.value != self.previous_data_selector_value:
+    #     # # update self.selected_nodes
+    #     mask = self._get_data_mask()
+    #     self.selected_nodes = self.node_indices[mask]
+    #     # set the value of self.density_view_scatter_selection1d to None
+    #     self.density_view_scatter_selection1d.event(index=[])
+    #     if not np.array_equal(self.selected_nodes, self.previous_selected_nodes): # notice the order
+    #         mask = self._get_data_mask()
+    #         self.selected_nodes = self.node_indices[mask]
+    #         self.selected_nodes_stream.event(selected_nodes=self.selected_nodes)
+
+    #     # if not np.array_equal(self.selected_nodes, previous_selected_nodes):
+    #     #     # update fairness metric view
+    #     #     self._update_fairness_metric_view()
+
+    #     # update graph view
+    #     # self._update_graph_view(previous_selected_nodes)
+
+    #     if not np.array_equal(self.selected_nodes, previous_selected_nodes):
+    #         # update correlation view
+    #         self._update_correlation_view()
+
+    #     # update attribute view
+    #     # self._update_attribute_view()
+
+    #     # update subgraph view
+    #     # self._update_subgraph_view()
+
+    #     self.previous_data_selector_value = self.data_selector.value
+    #     self.previous_selected_nodes = self.selected_nodes
+        
     def _data_select_control_panel_button_callback(self, event):
-        previous_selected_nodes = self.previous_selected_nodes
-        # # check if the data_selector value has changed
-        # if self.data_selector.value != self.previous_data_selector_value:
         # # update self.selected_nodes
         mask = self._get_data_mask()
-        self.selected_nodes = self.node_indices[mask]
+        selected_nodes = self.node_indices[mask]
         # set the value of self.density_view_scatter_selection1d to None
         self.density_view_scatter_selection1d.event(index=[])
-        if not np.array_equal(self.selected_nodes, self.previous_selected_nodes): # notice the order
-            mask = self._get_data_mask()
-            self.selected_nodes = self.node_indices[mask]
-            self.selected_nodes_stream.event(selected_nodes=self.selected_nodes)
-
-        # if not np.array_equal(self.selected_nodes, previous_selected_nodes):
-        #     # update fairness metric view
-        #     self._update_fairness_metric_view()
-
-        # update graph view
-        self._update_graph_view(previous_selected_nodes)
-
-        if not np.array_equal(self.selected_nodes, previous_selected_nodes):
-            # update correlation view
-            self._update_correlation_view()
-
-        # update attribute view
-        # self._update_attribute_view()
-
-        # update subgraph view
-        # self._update_subgraph_view()
+        self.selected_nodes_stream.event(selected_nodes=selected_nodes)
 
         self.previous_data_selector_value = self.data_selector.value
-        self.previous_selected_nodes = self.selected_nodes
 
     def _update_fairness_metric_view(self):
         pass
@@ -1060,18 +1246,19 @@ class EUG:
         # # return metrics
             
     def _update_graph_view(self, previous_selected_nodes):
-        # if self.selected_nodes != self.previous_selected_nodes:
-        if not np.array_equal(self.selected_nodes, previous_selected_nodes):
-            # create a np array containing 1 and 0.2 representing the alpha value of the nodes selected and not selected
-            selected_alpha = np.zeros(self.n_nodes)
-            selected_alpha[self.selected_nodes] = 1
-            # not selected nodes are set to 0.2
-            selected_alpha[selected_alpha == 0] = 0.2
-            # element-wise multiplication of the selected_alpha and the sampled_alpha
-            # alpha = selected_alpha * self.data_graph_graph_view.sampled_alpha
-            alpha = selected_alpha * self.data_embedding_view.sampled_alpha
-            # update the alpha of the nodes
-            self.graph_view_scatter.event(sampled_alpha=alpha)
+        pass
+        # # if self.selected_nodes != self.previous_selected_nodes:
+        # if not np.array_equal(self.selected_nodes, previous_selected_nodes):
+        #     # create a np array containing 1 and 0.2 representing the alpha value of the nodes selected and not selected
+        #     selected_alpha = np.zeros(self.n_nodes)
+        #     selected_alpha[self.selected_nodes] = 1
+        #     # not selected nodes are set to 0.2
+        #     selected_alpha[selected_alpha == 0] = 0.2
+        #     # element-wise multiplication of the selected_alpha and the sampled_alpha
+        #     # alpha = selected_alpha * self.data_graph_graph_view.sampled_alpha
+        #     alpha = selected_alpha * self.data_embedding_view.sampled_alpha
+        #     # update the alpha of the nodes
+        #     self.graph_view_scatter.event(sampled_alpha=alpha)
         # if self.sens_name_selector.value != self.previous_sens_name_value:
         #     self.graph_view_scatter.event(sens_name=self.sens_name_selector.value)
             # self.graph_view_xdist.event(sens_name=self.sens_name_selector.value)
@@ -1082,10 +1269,10 @@ class EUG:
 
     def _update_correlation_view(self):
         if self.sens_name_selector.value != self.previous_sens_name_value:
-            self.individual_bias_metrics = individual_bias.individual_bias_contribution(self.adj, self.feat, self.model, self.groups_stream.groups)
-        selected_individual_bias_metrics = self.individual_bias_metrics[self.selected_nodes]
+            self.individual_bias_metrics_stream.event(individual_bias_metrics=individual_bias.individual_bias_contribution(self.adj, self.feat, self.model, self.groups_stream.groups))
+        selected_individual_bias_metrics = self.individual_bias_metrics_stream.individual_bias_metrics[self.selected_nodes_stream.selected_nodes]
         # feat_np_selected = self.feat[self.selected_nodes].cpu().numpy()
-        computational_graph_degrees_selected = self.computational_graph_degrees[:, self.selected_nodes]
+        computational_graph_degrees_selected = self.computational_graph_degrees[:, self.selected_nodes_stream.selected_nodes]
 
         # pearson_r_results = [stats.pearsonr(row, selected_individual_bias_metrics) 
         #                      for row in feat_np_selected.T[~self.columns_categorical]]
@@ -1097,18 +1284,23 @@ class EUG:
         # pointbiserial_correlations = [r[0] for r in pointbiserialr_results]
         # pointbiserial_p_vals = [r[1] for r in pointbiserialr_results]
 
-        pearson_r_results_degree = [stats.pearsonr(row, selected_individual_bias_metrics) 
-                                    for row in computational_graph_degrees_selected]
-        pearson_correlations_degree = [r[0] for r in pearson_r_results_degree]
-        pearson_p_vals_degree = [r[1] for r in pearson_r_results_degree]
+        if len(selected_individual_bias_metrics) > 1:
+            pearson_r_results_degree = [stats.pearsonr(row, selected_individual_bias_metrics) 
+                                        for row in computational_graph_degrees_selected]
+            pearson_correlations_degree = [r[0] for r in pearson_r_results_degree]
+            pearson_p_vals_degree = [r[1] for r in pearson_r_results_degree]
+        else:
+            # set values to np.nan
+            pearson_correlations_degree = [np.nan for _ in range(self.max_hop)]
+            pearson_p_vals_degree = [np.nan for _ in range(self.max_hop)]
 
         # update the options of self.correlation_view_selection
         options_dict = {f'Hop-{i+1} Corr.: {pearson_correlations_degree[i]:.2f} P-value: {pearson_p_vals_degree[i]:.2f}': i for i in range(self.max_hop)}
         self.correlation_view_selection.options = options_dict
-
+        print('done')
         # self.data_correlation_view_selection_continuous.event(correlations=pearson_correlations, p_vals=pearson_p_vals)
         # self.data_correlation_view_selection_categorical.event(correlations=pointbiserial_correlations, p_vals=pointbiserial_p_vals)
-        self.data_correlation_view_selection_degree.event(correlations=pearson_correlations_degree, p_vals=pearson_p_vals_degree)
+        # self.data_correlation_view_selection_degree.event(correlations=pearson_correlations_degree, p_vals=pearson_p_vals_degree)
 
     # def _update_attribute_view(self):
     #     # continuous attributes
@@ -1155,15 +1347,17 @@ class EUG:
                                                                               feat_name=feat_name),
                                                                       streams=[self.selected_nodes_stream, self.groups_stream]).opts(
                                                                                                                                     height=int(self.diagnostic_panel_height*0.45),
-                                                                                                                                    width=int(self.diagnostic_panel_width*0.3),
+                                                                                                                                    width=int(self.diagnostic_panel_width*0.4),
                                                                                                                                 )
                     # self.attribute_view_correlation.object = draw.draw_attribute_view_correlation_violin(feat,
                     #                                                                                      self.individual_bias_metrics,
                     #                                                                                      self.selected_nodes)
                     self.attribute_view_correlation.object = hv.DynamicMap(pn.bind(draw.draw_attribute_view_correlation_violin,
                                                                                     feat=feat,
-                                                                                    metric=self.individual_bias_metrics),
-                                                                            streams=[self.selected_nodes_stream]).opts(
+                                                                                    # metric=self.individual_bias_metrics
+                                                                                    ),
+                                                                            streams=[self.selected_nodes_stream,
+                                                                                     self.individual_bias_metrics_stream]).opts(
                                                                                                                         height=int(self.diagnostic_panel_height*0.45),
                                                                                                                         width=int(self.diagnostic_panel_width*0.3),
                                                                                                                     )
@@ -1177,15 +1371,17 @@ class EUG:
                                                                                 feat_name=feat_name),
                                                                         streams=[self.selected_nodes_stream, self.groups_stream]).opts(
                                                                                                                                         height=int(self.diagnostic_panel_height*0.45),
-                                                                                                                                        width=int(self.diagnostic_panel_width*0.3),
+                                                                                                                                        width=int(self.diagnostic_panel_width*0.4),
                                                                                                                                     )
                     # self.attribute_view_correlation.object = draw.draw_attribute_view_correlation_hex(feat,
                     #                                                                                   self.individual_bias_metrics,
                     #                                                                                   self.selected_nodes)
                     self.attribute_view_correlation.object = hv.DynamicMap(pn.bind(draw.draw_attribute_view_correlation_hex,
                                                                                     feat=feat,
-                                                                                    metric=self.individual_bias_metrics),
-                                                                            streams=[self.selected_nodes_stream]).opts(
+                                                                                    # metric=self.individual_bias_metrics
+                                                                                    ),
+                                                                            streams=[self.selected_nodes_stream,
+                                                                                     self.individual_bias_metrics_stream]).opts(
                                                                                                                     height=int(self.diagnostic_panel_height*0.45),
                                                                                                                     width=int(self.diagnostic_panel_width*0.3),
                                                                                                                 )
@@ -1199,18 +1395,24 @@ class EUG:
         self.selected_communities_dropdown.value = self.selected_communities_dropdown.options[0]
 
     def _update_subgraph_view(self, event):
-        print('in _update_subgraph_view')
+        # print('in _update_subgraph_view')
+        # if self.selected_communities_dropdown.value:
+        #     # convert node_indices_selected to a list
+        #     self.selected_nodes = np.array(list(map(int, self.selected_communities_dropdown.value.split(', '))))
+        # else:
+        #     # self.selected_nodes = self.node_indices
+        #     # update self.selected_nodes
+        #     mask = self._get_data_mask()
+        #     self.selected_nodes = self.node_indices[mask]
+        # if not np.array_equal(self.selected_nodes, self.previous_selected_nodes): # notice the order
+        #     self.selected_nodes_stream.event(selected_nodes=self.selected_nodes)
+        # self.previous_selected_nodes = self.selected_nodes
         if self.selected_communities_dropdown.value:
             # convert node_indices_selected to a list
-            self.selected_nodes = np.array(list(map(int, self.selected_communities_dropdown.value.split(', '))))
+            selected_nodes = np.array(list(map(int, self.selected_communities_dropdown.value.split(', '))))
         else:
-            # self.selected_nodes = self.node_indices
-            # update self.selected_nodes
-            mask = self._get_data_mask()
-            self.selected_nodes = self.node_indices[mask]
-        if not np.array_equal(self.selected_nodes, self.previous_selected_nodes): # notice the order
-            self.selected_nodes_stream.event(selected_nodes=self.selected_nodes)
-        self.previous_selected_nodes = self.selected_nodes
+            selected_nodes = self.node_indices
+        self.selected_nodes_stream.event(selected_nodes=selected_nodes)
 
     def _get_data_mask(self):
         """
@@ -1236,168 +1438,40 @@ class EUG:
     #     self._update_fairness_metric_view()
 
     # def _update_fairness_metric_detail(self, event, metric_name):
-    def _update_fairness_metric_detail(self, x, y):
-        metric_name = y
-        chart = hv.DynamicMap(pn.bind(draw.draw_fairness_metric_view_detail,
-                                      metric_name=metric_name,
-                                      metric_name_dict=self.metric_name_dict,
-                                      labels=self.labels,
-                                      predictions=self.predictions,),
-                              streams=[self.selected_nodes_stream, self.groups_stream])
-        # mask = torch.zeros_like(self.train_mask).bool()
-        # if 'train' in self.data_selector.value:
-        #     mask = mask | self.train_mask
-        # if 'val' in self.data_selector.value:
-        #     mask = mask | self.val_mask
-        # if 'test' in self.data_selector.value:
-        #     mask = mask | self.test_mask
-        # if 'other' in self.data_selector.value:
-        #     mask = mask | self.other_mask
+    def _update_fairness_metric_detail(self, index):
+        print('in _update_fairness_metric_detail')
+        if index:
+            metric_name = index[0]
+            chart = hv.DynamicMap(pn.bind(draw.draw_fairness_metric_view_detail,
+                                        metric_name=metric_name,
+                                        #   metric_name_dict=self.metric_name_dict,
+                                        labels=self.labels,
+                                        predictions=self.predictions,
+                                        eod_radio=self.fairness_metric_view_chart_eod_radio),
+                                streams=[self.selected_nodes_stream, self.groups_stream]) 
 
-        # predictions = self.predictions[mask]
-        # labels = self.labels[mask]
-        # tmp_sens = self.sens[:, mask]
-        # # sens = self.sens[0][mask]
-        # # sens = self.sens[self.sens_names.index(self.sens_name_selector.value)][mask]
+            if metric_name == 2 or metric_name == 6:
+                if len(self.fairness_metric_view_chart_column) == 1:
+                    self.fairness_metric_view_chart_column.insert(0, self.fairness_metric_view_chart_eod_radio)
+                    chart.opts(width=int(self.fairness_metric_view_width*0.43), height=int(self.fairness_metric_view_height*0.77))
+            else:
+                if len(self.fairness_metric_view_chart_column) == 2:
+                    self.fairness_metric_view_chart_column.pop(0)  
+                chart.opts(width=int(self.fairness_metric_view_width*0.43), height=int(self.fairness_metric_view_height*0.95))
 
-        # # find the index of sens_name in sens_names
-        # sens_name_idx = []
-        # for sn in self.sens_name_selector.value:
-        #     sn_idx = self.sens_names.index(sn)
-        #     sens_name_idx.append(sn_idx)
+            self.fairness_metric_view_chart.object = chart
 
-        # tmp_sens_selected = tmp_sens[sens_name_idx]
-        # # Vectorize the function
-        # vectorized_concat = np.vectorize(util.concatenate_elements)
-        # # Apply the vectorized function across columns
-        # sens = vectorized_concat(*tmp_sens_selected)
-
-        # labeled_mask = labels != -1
-        # predictions = predictions[labeled_mask]
-        # labels = labels[labeled_mask]
-        # groups = sens[labeled_mask]
-        # unique_labels = np.unique(labels)
-        # unique_groups = np.unique(groups)
-        # # get the name of the clicked button
-        # # metric_name = event.obj.name
-        # if self.metric_name_dict[metric_name] == 'micro_f1_std_dev':
-        #     micro_f1_scores = []
-        #     for group in unique_groups:
-        #         group_indices = np.where(groups == group)
-        #         group_pred = predictions[group_indices]
-        #         group_labels = labels[group_indices]
-
-        #         micro_f1 = f1_score(group_labels, group_pred, average='micro')
-        #         micro_f1_scores.append(micro_f1)
-        #     data = {'Sensitive Subgroup': unique_groups, 'Micro-F1': micro_f1_scores}
-        #     chart = draw.draw_bar_metric_view(data, 'Micro-F1')
-        # # elif self.metric_name_dict[metric_name] == 'surrogate_di':
-        # #     heatmap_data = []
-
-        # #     for i, label in enumerate(unique_labels):
-        # #         for j, group in enumerate(unique_groups):
-        # #             group_indices = np.where(groups == group)
-        # #             group_predictions = predictions[group_indices]
-
-        # #             # Proportion of positive predictions for the current group and label
-        # #             positive_proportion = np.mean(group_predictions == label)
-        # #             heatmap_data.append((str(int(label)), group, positive_proportion))
-
-        # #     # Generate the heatmap using the draw module
-        # #     chart = draw.draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Subgroup', 'Pos. Pred. Rate')
-        # elif self.metric_name_dict[metric_name] == 'efpr':
-        #     heatmap_data = []
-            
-        #     for label in unique_labels:
-        #         for group in unique_groups:
-        #             group_indices = np.where(groups == group)
-        #             group_pred = predictions[group_indices]
-        #             group_labels = labels[group_indices]
-
-        #             tn = np.sum((group_pred != label) & (group_labels != label))
-        #             fp = np.sum((group_pred == label) & (group_labels != label))
-        #             fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
-
-        #             heatmap_data.append((str(int(label)), group, fpr))
-            
-        #     chart = draw.draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Subgroup', 'FPR')
-        # elif self.metric_name_dict[metric_name] == 'efnr':
-        #     heatmap_data = []
-            
-        #     for label in unique_labels:
-        #         for group in unique_groups:
-        #             group_indices = np.where(groups == group)
-        #             group_pred = predictions[group_indices]
-        #             group_labels = labels[group_indices]
-
-        #             fn = np.sum((group_pred != label) & (group_labels == label))
-        #             tp = np.sum((group_pred == label) & (group_labels == label))
-        #             fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
-
-        #             heatmap_data.append((str(int(label)), group, fnr))
-            
-        #     chart = draw.draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Subgroup', 'FNR')
-        # elif self.metric_name_dict[metric_name] == 'delta_dp_metric' or self.metric_name_dict[metric_name] == 'max_diff_delta_dp':
-        #     heatmap_data = []
-
-        #     for label in unique_labels:
-        #         for group in unique_groups:
-        #             group_indices = np.where(groups == group)
-        #             group_predictions = predictions[group_indices]
-
-        #             prob = np.mean(group_predictions == label)
-        #             heatmap_data.append((str(int(label)), group, prob))
-
-        #     chart = draw.draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Subgroup', 'P(Pred.=Label)')
-        # elif self.metric_name_dict[metric_name] == 'delta_eo_metric':
-        #     heatmap_data = []
-            
-        #     for label in unique_labels:
-        #         for group in unique_groups:
-        #             group_indices = np.where(groups == group)
-        #             group_pred = predictions[group_indices]
-        #             group_labels = labels[group_indices]
-
-        #             tp = np.sum((group_pred == label) & (group_labels == label))
-        #             fn = np.sum((group_pred != label) & (group_labels == label))
-        #             tpr = tp / (tp + fn) if (tp + fn) > 0 else 0
-
-        #             heatmap_data.append((str(int(label)), group, tpr))
-            
-        #     chart = draw.draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Subgroup', 'ETPR')
-        # elif self.metric_name_dict[metric_name] == 'delta_accuracy_metric' or self.metric_name_dict[metric_name] == 'sigma_accuracy_metric':
-        #     group_accs = []
-        #     for group in unique_groups:
-        #         group_indices = np.where(groups == group)
-        #         group_accuracy = accuracy_score(labels[group_indices], predictions[group_indices])
-
-        #         group_accs.append(group_accuracy)
-
-        #     data = {'Sensitive Subgroup': unique_groups, 'Accuracy': group_accs}
-        #     chart = draw.draw_bar_metric_view(data, 'Accuracy')
-        # elif self.metric_name_dict[metric_name] == 'delta_ted_metric':
-        #     heatmap_data = []
-
-        #     for label in unique_labels:
-        #         for group in unique_groups:
-        #             group_indices = np.where(groups == group)
-        #             fp = np.sum((predictions[group_indices] == label) & (labels[group_indices] != label))
-        #             fn = np.sum((predictions[group_indices] != label) & (labels[group_indices] == label))
-
-        #             ratio = fp / fn if fn > 0 else float('inf')
-        #             heatmap_data.append((str(int(label)), group, ratio))
-
-        #     chart = draw.draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Subgroup', 'FP/FN Ratio')
-
-        # chart.opts(width=int(self.width/3-120), height=int(self.height/2-115))
-        chart.opts(width=int(self.fairness_metric_view_width*0.43), height=int(self.fairness_metric_view_height*0.95))
-
-        self.fairness_metric_view_chart.object = chart
 
     def _min_threshold_slider_button_callback(self, event):
         thr = self.min_threshold_slider.value
         # Recalculate communities
-        self.node_communities = community.extract_communities(*copy.deepcopy(self.extract_communities_args), thr)
+        # self.node_communities = community.extract_communities(*copy.deepcopy(self.extract_communities_args), thr)
+        # self.node_communities = community.extract_communities(community.Tree(), 
+        #                                                       *(self.extract_communities_args[1: ]), thr)
+        self.node_communities = community.extract_communities(community.Tree(), 
+                                                              *copy.deepcopy(self.extract_communities_args[1: 3]), 
+                                                              self.extract_communities_args[3], 
+                                                              thr)
         self.communities = []
         for indices in self.node_communities:
             # Convert set of indices to sorted list for slicing
@@ -1409,9 +1483,136 @@ class EUG:
             final_slice = row_sliced[:, indices_sorted]
             self.communities.append(final_slice)
         graph_metrics = util.calculate_graph_metrics(self.communities)
-        print(graph_metrics)
         # self.density_view_scatter.object = draw.draw_density_view_scatter(graph_metrics)
         self.data_density_view.event(graph_metrics=graph_metrics)
 
         # self.density_view_heatmap.object = draw.draw_density_view_heatmap(self.communities, self.min_threshold_slider.value)
         # self.data_subgraph_view.event(communities=self.communities)
+
+    def _selected_nodes_stream_subscriber(self, selected_nodes):
+        # create a np array containing 1 and 0.2 representing the alpha value of the nodes selected and not selected
+        selected_alpha = np.zeros(self.n_nodes)
+        selected_alpha[selected_nodes] = 1
+        # not selected nodes are set to 0.2
+        selected_alpha[selected_alpha == 0] = 0 
+        # element-wise multiplication of the selected_alpha and the sampled_alpha
+        # alpha = selected_alpha * self.data_graph_graph_view.sampled_alpha
+        # alpha = selected_alpha * self.data_embedding_view.sampled_alpha
+        alpha = selected_alpha * self.sampled_alpha
+        # update the alpha of the nodes
+        # self.graph_view_scatter.event(sampled_alpha=alpha)
+        self.data_embedding_view_alpha.event(alpha=alpha)
+
+        self._update_correlation_view()
+
+        # update contributions
+        contributions = util.calc_contributions(
+            model=self.model,
+            g=self.g,
+            feat=self.feat,
+            selected_nodes=self.selected_nodes_stream.selected_nodes,
+            groups=self.groups_stream.groups)
+        self.contributions_stream.event(contributions=contributions)
+
+    def _update_correlations_groups_callback(self, groups):
+        # update contributions
+        contributions = util.calc_contributions(
+            model=self.model,
+            g=self.g,
+            feat=self.feat,
+            selected_nodes=self.selected_nodes_stream.selected_nodes,
+            groups=self.groups_stream.groups)
+        self.contributions_stream.event(contributions=contributions)        
+
+    def _projection_selection_callback(self, event):
+        projection_name = self.projection_selection.value
+        if projection_name == 'UMAP':
+            # check if self.embeddings_umap is an empty list
+            if not self.embeddings_umap:
+                # compute the embeddings
+                self.embeddings_umap = util.proj_emb(self.embeddings, 'umap')
+            # update the embeddings
+            # self.data_embedding_view.event(xy=np.array(self.embeddings_umap))
+            self.data_embedding_view_xy.event(xy=np.array(self.embeddings_umap))
+        elif projection_name == 't-SNE':
+            # check if self.embeddings_tsne is an empty list
+            if not self.embeddings_tsne:
+                # compute the embeddings
+                self.embeddings_tsne = util.proj_emb(self.embeddings, 'tsne')
+            # update the embeddings
+            # self.data_embedding_view.event(xy=np.array(self.embeddings_tsne))
+            self.data_embedding_view_xy.event(xy=np.array(self.embeddings_tsne))
+        elif projection_name == 'PCA':
+            # check if self.embeddings_pca is an empty list
+            if not self.embeddings_pca:
+                # compute the embeddings
+                self.embeddings_pca = util.proj_emb(self.embeddings, 'pca')
+            # update the embeddings
+            # self.data_embedding_view.event(xy=np.array(self.embeddings_pca))
+            self.data_embedding_view_xy.event(xy=np.array(self.embeddings_pca))
+
+    def _prepare_data_embedding_view(self, event=None, xy=None, groups=None):
+        xy = self.data_embedding_view_xy.xy
+        layer = self.layer_selection.value - 1
+        groups = self.groups_stream.groups
+
+        sens_selected = groups
+        sens_selected_unique = np.unique(sens_selected)
+        colormap = {sens_selected_unique[i]: self.colors[i] for i in range(len(sens_selected_unique))}
+
+        min_thr, max_thr, polygons_lst, max_edges_lst = RangesetCategorical.pre_compute_contours(colormap, 
+                                                                                                 xy, layer, groups)
+        # update polygons_lst, max_edges_lst in the data_embedding_view
+        # self.data_embedding_view.event(polygons_lst=polygons_lst, max_edges_lst=max_edges_lst)
+        self.data_embedding_view_polys.event(polygons_lst=polygons_lst, max_edges_lst=max_edges_lst)
+        self.data_embedding_view_thr_range.event(min_thr=min_thr, max_thr=max_thr)
+
+    def _update_thr_range(self, min_thr, max_thr):
+        self.embedding_view_thr_slider.start = self.data_embedding_view_thr_range.min_thr
+        self.embedding_view_thr_slider.end = self.data_embedding_view_thr_range.max_thr
+        self.embedding_view_thr_slider.value = (self.data_embedding_view_thr_range.max_thr - self.data_embedding_view_thr_range.min_thr) / 10
+
+    def _graph_view_scatter_selection1d_subscriber(self, index):
+        print('in _graph_view_scatter_selection1d_subscriber')
+        print(index)
+        if index:
+            if len(index) > 1:
+                self.selected_nodes_stream.event(selected_nodes=np.array(index))
+            else:
+                idx = index[0]
+                adj_mul_indices_current = self.adj_mul_indices[self.layer_selection.value - 1]
+                selected_nodes = adj_mul_indices_current[1, adj_mul_indices_current[0] == idx].cpu().numpy()
+                if idx not in selected_nodes:
+                    selected_nodes = np.append(selected_nodes, idx)
+                print(selected_nodes) 
+                self.selected_nodes_stream.event(selected_nodes=selected_nodes)
+        else:
+            self.selected_nodes_stream.event(selected_nodes=self.node_indices)
+
+    # def _correlation_view_scatter_selection1d_subscriber(self, index):
+    #     print('in _correlation_view_scatter_selection1d_subscriber')
+    #     print(index)
+    #     if index:
+    #         self.selected_nodes_stream.event(selected_nodes=np.array(index))
+    #     else:
+    #         self.selected_nodes_stream.event(selected_nodes=self.node_indices)
+
+    def _save_extract_communities_args(self):
+        # Determine the directory of the current file
+        current_dir = os.path.dirname(__file__)
+        file_path = os.path.join(current_dir, 'extract_communities_args.pkl')
+
+        # Use pickle to serialize self.extract_communities_args to the file
+        with open(file_path, 'wb') as file:
+            pickle.dump(self.extract_communities_args[1: 3], file) 
+
+    def _load_extract_communities_args(self):
+        # Determine the directory of the current file
+        current_dir = os.path.dirname(__file__)
+        file_path = os.path.join(current_dir, 'extract_communities_args.pkl')
+
+        # Use pickle to deserialize the object from the file
+        with open(file_path, 'rb') as file:
+            # self.extract_communities_args = pickle.load(file)
+            ret = pickle.load(file)
+        return ret

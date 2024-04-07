@@ -26,6 +26,7 @@ import sys
 import base64
 import importlib.util
 import inspect
+from . import individual_bias
 
 
 torch.manual_seed(42)
@@ -676,61 +677,146 @@ def calculate_graph_metrics(adj_matrices):
     return metrics
 
 
+# def analyze_bias(feat, groups, columns_categorical, selected_nodes):
+#     n, m = feat.shape
+
+#     # feat a df, slice the rows with selected_nodes as index
+#     feat_selected = feat.iloc[selected_nodes]
+#     groups_selected = groups.iloc[selected_nodes]
+#     # unique_groups = np.unique(groups)
+#     value_counts = groups_selected.value_counts()
+#     # unique_groups = groups_selected.unique()
+#     unique_groups = value_counts.index
+#     ns = value_counts.values
+#     num_groups = len(unique_groups)
+#     bias_indicator = np.zeros((m, num_groups), dtype=bool)  # Adjusted dimensions
+#     overall_bias_indicator = np.zeros(m, dtype=bool)  # One for each feature
+#     if num_groups > 1:
+#         for i in range(m):
+#             variable_data = feat_selected.iloc[:, i]
+#             if columns_categorical[i]:  # If the column is categorical
+#                 # get the i-th column of feat_selected as variable_data
+#                 # Step 1: Construct a Contingency Table
+#                 contingency_table = pd.crosstab(variable_data, groups_selected)
+
+#                 # Step 2: Perform the Chi-Square Test
+#                 chi2_stat, chi2_p, dof, expected = chi2_contingency(contingency_table)
+#                 if chi2_p <= 0.05:
+#                     overall_bias_indicator[i] = True
+
+#                 # Pairwise tests (Chi-Square) for each group
+#                 for j, group_name in enumerate(unique_groups):
+#                     group_data = contingency_table[group_name]
+#                     other_data = contingency_table.drop(columns=group_name)
+#                     stat, p, dof, expected = chi2_contingency(pd.concat([group_data, other_data], axis=1))
+#                     if p <= 0.05:
+#                         bias_indicator[i, j] = True  # Update for specific group
+#             else:
+#                 df = pd.concat([variable_data, groups_selected], axis=1)
+                
+#                 # Global statistical test (Kruskal-Wallis)
+#                 kruskal_stat, kruskal_p = kruskal(*[group.iloc[:, 0].values for name, group in df.groupby("Group")])
+#                 if kruskal_p <= 0.05:
+#                     overall_bias_indicator[i] = True
+
+#                 # Pairwise tests (Mann-Whitney U) for each group
+#                 for j, group_name in enumerate(unique_groups):
+#                     group_data = df[df['Group'] == group_name][variable_data.name]
+#                     other_data = df[df['Group'] != group_name][variable_data.name]
+                    
+#                     stat, p = mannwhitneyu(group_data, other_data, alternative='two-sided')
+#                     if p <= 0.05:
+#                         bias_indicator[i, j] = True
+
+#     # # Sort features by those with detected bias
+#     # sorted_indices = np.argsort(overall_bias_indicator)  # Negate for descending order
+#     # sorted_bias_indicator = bias_indicator[sorted_indices]
+#     # # sorted_overall_bias_indicator = overall_bias_indicator[sorted_indices]
+
+#     # return sorted_bias_indicator, overall_bias_indicator, ns
+#     return bias_indicator, overall_bias_indicator, ns
+
 def analyze_bias(feat, groups, columns_categorical, selected_nodes):
     n, m = feat.shape
 
-    # feat a df, slice the rows with selected_nodes as index
+    # Identify all unique groups in the dataset
+    all_value_counts = groups.value_counts()
+    all_unique_groups = all_value_counts.index
+    num_all_groups = len(all_unique_groups)
+    all_ns = all_value_counts.values
+
+    # feat as a DataFrame, slice the rows with selected_nodes as index
     feat_selected = feat.iloc[selected_nodes]
     groups_selected = groups.iloc[selected_nodes]
-    # unique_groups = np.unique(groups)
     value_counts = groups_selected.value_counts()
-    # unique_groups = groups_selected.unique()
-    unique_groups = value_counts.index
-    ns = value_counts.values
-    num_groups = len(unique_groups)
-    bias_indicator = np.zeros((m, num_groups), dtype=bool)  # Adjusted dimensions
-    overall_bias_indicator = np.zeros(m, dtype=bool)  # One for each feature
+    selected_unique_groups = value_counts.index
+    num_groups = len(selected_unique_groups)
+
+    # Initialize ns for all groups with 0s
+    ns = np.zeros(num_all_groups, dtype=int)
+    for group_name in selected_unique_groups:
+        group_index = np.where(all_unique_groups == group_name)[0][0]
+        ns[group_index] = value_counts[group_name]
+
+    # Initialize bias_indicator with None for all features and groups
+    # bias_indicator = np.full((m, num_all_groups), None, dtype=object)  
+    bias_indicator = np.zeros((m, num_all_groups), dtype=bool)  # Adjusted dimensions
+    overall_bias_indicator = np.zeros(m, dtype=bool)
+
     if num_groups > 1:
         for i in range(m):
             variable_data = feat_selected.iloc[:, i]
             if columns_categorical[i]:  # If the column is categorical
-                # get the i-th column of feat_selected as variable_data
-                # Step 1: Construct a Contingency Table
                 contingency_table = pd.crosstab(variable_data, groups_selected)
-
-                # Step 2: Perform the Chi-Square Test
                 chi2_stat, chi2_p, dof, expected = chi2_contingency(contingency_table)
                 if chi2_p <= 0.05:
                     overall_bias_indicator[i] = True
 
-                # Pairwise tests (Chi-Square) for each group
-                for j, group_name in enumerate(unique_groups):
-                    group_data = contingency_table[group_name]
-                    other_data = contingency_table.drop(columns=group_name)
-                    stat, p, dof, expected = chi2_contingency(pd.concat([group_data, other_data], axis=1))
-                    if p <= 0.05:
-                        bias_indicator[i, j] = True  # Update for specific group
+                for j, group_name in enumerate(all_unique_groups):
+                    if group_name in selected_unique_groups:
+                        group_data = contingency_table.get(group_name, pd.Series([]))
+                        other_data = contingency_table.drop(columns=group_name, errors='ignore')
+                        stat, p, dof, expected = chi2_contingency(pd.concat([group_data, other_data], axis=1))
+                        bias_indicator[i, j] = p <= 0.05
             else:
-                df = pd.concat([variable_data, groups_selected], axis=1)
-                
-                # Global statistical test (Kruskal-Wallis)
-                kruskal_stat, kruskal_p = kruskal(*[group.iloc[:, 0].values for name, group in df.groupby("Group")])
+                df = pd.concat([variable_data, groups_selected], axis=1, keys=['Data', 'Group'])
+                kruskal_stat, kruskal_p = kruskal(*[group['Data'].values for name, group in df.groupby('Group')])
                 if kruskal_p <= 0.05:
                     overall_bias_indicator[i] = True
 
-                # Pairwise tests (Mann-Whitney U) for each group
-                for j, group_name in enumerate(unique_groups):
-                    group_data = df[df['Group'] == group_name][variable_data.name]
-                    other_data = df[df['Group'] != group_name][variable_data.name]
-                    
-                    stat, p = mannwhitneyu(group_data, other_data, alternative='two-sided')
-                    if p <= 0.05:
-                        bias_indicator[i, j] = True
+                for j, group_name in enumerate(all_unique_groups):
+                    if group_name in selected_unique_groups:
+                        group_data = df[df['Group'] == group_name]['Data']
+                        other_data = df[df['Group'] != group_name]['Data']
+                        stat, p = mannwhitneyu(group_data, other_data, alternative='two-sided')
+                        bias_indicator[i, j] = p <= 0.05
 
-    # # Sort features by those with detected bias
-    # sorted_indices = np.argsort(overall_bias_indicator)  # Negate for descending order
-    # sorted_bias_indicator = bias_indicator[sorted_indices]
-    # # sorted_overall_bias_indicator = overall_bias_indicator[sorted_indices]
+    return bias_indicator, overall_bias_indicator, ns, all_ns, all_unique_groups
 
-    # return sorted_bias_indicator, overall_bias_indicator, ns
-    return bias_indicator, overall_bias_indicator, ns
+
+def calc_contributions(model, g, feat, selected_nodes, groups):
+    n_feat = feat.shape[-1]
+    feat_mean = feat.mean(dim=tuple(range(feat.dim() - 1)))
+
+    # Set the model to evaluation
+    model.eval()
+    # Get the embeddings
+    with torch.no_grad():
+        embeddings = model(g, feat)
+    ori_dist = individual_bias.avg_dist(groups, embeddings)
+
+    # for each column in feat
+    contributions = np.zeros(n_feat)
+    for i in range(n_feat):
+        feat_clone = feat.clone().detach()
+        feat_clone[..., selected_nodes, i] = feat_mean[i]
+        with torch.no_grad():
+            embeddings_perturbed = model(g, feat_clone)
+        dist_perturbed = individual_bias.avg_dist(groups, embeddings_perturbed)
+        contributions[i] = dist_perturbed
+    contributions = ori_dist - contributions
+    return contributions
+
+        
+
+

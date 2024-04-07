@@ -185,7 +185,7 @@ def process_graph(adj):
             root_nodes.add(temp_root)
 
 	#print tree.root.vertices, len(tree.root.vertices)
-    root_nodes = filter( lambda entry: entry.parent==None, list(root_nodes))
+    root_nodes = list(filter( lambda entry: entry.parent==None, list(root_nodes)))
 
     return tree, root_nodes, nodes, G
 
