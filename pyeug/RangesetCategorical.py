@@ -5,7 +5,8 @@ import holoviews as hv
 from shapely.ops import triangulate
 from shapely.geometry import MultiPoint, MultiLineString, Polygon, MultiPolygon, LineString
 from shapely.ops import unary_union
-
+# tqdm
+from tqdm import tqdm
 
 def _min_max_edge(polygon):
     '''Compute the length of the longest edge of a polygon.
@@ -55,7 +56,7 @@ def compute_contours(colormap, polygons_lst, max_edges_lst, threshold):
     poly_pos = [[],[]]
     poly_color = []
     # for c in colormap:
-    for i, (s, c) in enumerate(colormap.items()):
+    for i, (s, c) in tqdm(enumerate(colormap.items())):
         polygons = polygons_lst[i]
         max_edges = max_edges_lst[i]
         poly = unary_union([polygon for j, polygon in enumerate(polygons) if max_edges[j] <= threshold]) # preserve

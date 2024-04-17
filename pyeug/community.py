@@ -126,6 +126,7 @@ def process_graph(adj):
 
     A = nx.adjacency_matrix(G)
     adj_matrix = A.todense()
+    print(adj_matrix)
 
     M = np.zeros(adj_matrix.shape)
     row, col = adj_matrix.shape

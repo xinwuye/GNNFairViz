@@ -29,6 +29,7 @@ import panel as pn
 # from . import RangesetCategorical
 import copy
 from bokeh.models import HelpButton, Tooltip
+import random
 
 hv.extension('bokeh')
 pn.extension()
@@ -65,6 +66,10 @@ class DataDensityView(Stream):
 #     sampled_alpha = param.Array(default=np.array([]), constant=True, doc='Sampled alpha.')
 #     polygons_lst = param.List(default=[], constant=True, doc='Polygons.')
 #     max_edges_lst = param.List(default=[], constant=True, doc='Max edges.')
+
+
+class SampleIdx(Stream):
+    sample_idx = param.Array(default=np.array([]), constant=False, doc='Sampled indices.')
 
 
 class DataEmbeddingViewAlpha(Stream):
@@ -121,6 +126,15 @@ class Groups(Stream):
 
 class Contributions(Stream):
     contributions = param.Array(default=np.array([]), constant=False, doc='Contributions.')
+    contributions_selected_attrs = param.Array(default=np.array([0.]), constant=False, doc='Contributions selected attributes.')
+
+
+class ContributionsSelectedNodes(Stream):
+    contributions_selected_nodes = param.List(default=[], constant=False, doc='Contributions selected nodes.')
+
+
+class SelectedAttrsLs(Stream):
+    selected_attrs_ls = param.List(default=[[]], constant=False, doc='Selected attributes list.')
 
 
 class IndividualBiasMetrics(Stream):
@@ -142,6 +156,7 @@ class EUG:
         self.adj_mul_indices = []
         self.adj0, self.adj1, self.adj0_scipy, self.adj1_scipy = util.modify_sparse_tensor_scipy(adj)
         self.feat = feat
+        self.n_feat = feat.shape[-1]
         self.sens = sens
         self.groups_stream = Groups(groups=self.sens[0])
         self.sens_names = sens_names
@@ -188,6 +203,7 @@ class EUG:
         self.embeddings_pca = util.proj_emb(self.embeddings, 'pca')
         self.embeddings_tsne = []
         self.embeddings_umap = util.proj_emb(self.embeddings, 'umap')
+        print('umap is fine')
 
         self.xy = np.array(self.embeddings_umap)
         # self.masked_adj_unfair = np.zeros_like(adj)
@@ -214,10 +230,48 @@ class EUG:
         #     '#d05d2e', '#6bd4a3', '#ce478c', '#5c7d39', '#bf4b56', 
         #     '#7ab7d5', '#a0714a', '#7b5d84', '#c2c6a4', '#d3a1c4', 
         #     '#4e7670']
-        self.colors = [
-            '#d05d2e', '#6bd4a3', '#ce478c', '#5c7d39', '#bf4b56', 
-            '#7ab7d5', '#a0714a', '#7b5d84', '#c2c6a4', '#d3a1c4', 
-            '#4e7670']
+        # self.colors = [
+        #     '#d05d2e', '#6bd4a3', '#ce478c', '#5c7d39', '#bf4b56', 
+        #     '#7ab7d5', '#a0714a', '#7b5d84', '#c2c6a4', '#d3a1c4', 
+        #     '#4e7670']
+        # self.colors = ['#D17474',  '#D19874', '#D1AB74',  '#D1B874', 
+        #     '#D1C474', '#D1D174', '#AEC66E',  '#86B766', '#519271', 
+        #     '#4A7682', '#54658C', '#615890', '#6E538D', '#834D89', 
+        #     '#AF6285'] 
+        # self.colors = [
+        #     '#AF6285',
+        #     '#D19874',
+        #     '#519271',
+        #     '#AEC66E',
+        #     '#6E538D',
+        #     '#4A7682', 
+        #     '#D1C474',
+        #     '#834D89', 
+        #     '#D1AB74',
+        #     '#D1D174',
+        #     '#615890',
+        #     '#86B766',
+        #     '#D17474',
+        #     '#54658C', 
+        #     '#D1B874']
+        # self.colors = ['#E7F9B5',
+        # '#FFD5B9',
+        # '#FFFFB9',
+        # '#FFB9B9',
+        # '#FFECB9',
+        # '#A4B4DA',
+        # '#FFF5B9',
+        # '#D39ED8',
+        # '#BDA3DA',
+        # '#EDACCA',
+        # '#B0A8DC',
+        # '#9CC8D4',
+        # '#C9F1AF',
+        # '#FFE3B9', 
+        # '#A1DDBF']
+        self.colors = ['#F1B8B8', '#F1CEB8', '#F1DAB8', '#F1E2B8', '#F1E9B8', '#F1F1B8', 
+                       '#D6E4AE', '#B5D4A1', '#81A995', '#738E96', '#7F89A1', '#8984A7', 
+                       '#907FA3', '#9A799E', '#CB9AB0',]
         
         # self.selectable_metrics = []
         # for layer in self.layers:
@@ -259,6 +313,9 @@ class EUG:
         # self.data_metric_view = DataMetricView(metrics=self.metrics)
         # self.data_feature_view = DataFeatureView(feat=self.feat)
 
+        self.previous_attribute_view_overview_tap_x = None
+        self.previous_attribute_view_overview_tap_y = None
+
         # self.selection = streams.Selection1D()
         # self.ids = self.selection.index        
         # self.threshold_slider = pn.widgets.FloatSlider(name='Threshold', start=0, end=1.0, step=0.001, value=0.999)
@@ -267,6 +324,8 @@ class EUG:
         self.metric_view = None
         # self.feature_view = None
         self.correlation_view_selection_continuous = None
+
+        self.records = []
 
     def show(self):
         height = 900
@@ -294,6 +353,8 @@ class EUG:
         self.diagnostic_panel_width = int(width*3/4)-padding
 
         # widget for all
+        self.record_button = pn.widgets.Button(name='Record', button_type='default')
+        self.record_button.on_click(self._record_button_callback)
         # self.sens_name_selector = pn.widgets.Select(options=self.sens_names, value = self.sens_names[0], name='Sensitive Attribute')
         self.sens_name_selector = pn.widgets.MultiChoice(name='Sensitive Attribute', 
                                                          options=self.sens_names, 
@@ -348,8 +409,18 @@ class EUG:
                                                             end=self.n_nodes, 
                                                             step=1, 
                                                             # value=self.init_sample_size, 
-                                                            value=self.n_nodes,
+                                                            value=300,
                                                             width=200)
+        
+        # create sampled_alpha
+        ##### move self.individual_bias_metrics_stream here ####
+        node_sample_size = self.node_sample_size_slider.value
+        self.sampled_alpha = np.ones(self.n_nodes)
+        sample_idx = np.random.choice(np.arange(self.n_nodes), node_sample_size, replace=False)
+        sample_idx_stream = SampleIdx(sample_idx=sample_idx)
+        self.sampled_alpha[sample_idx] = 1
+        self.data_embedding_view_alpha = DataEmbeddingViewAlpha(alpha=self.sampled_alpha) 
+
         sample_button = pn.widgets.Button(name='Sample', button_type='default')
         sample_button.on_click(self._sample_button_callback)
 
@@ -358,8 +429,7 @@ class EUG:
         # self.init_sample_size = self.n_nodes
         # sample_idx = np.random.choice(np.arange(self.n_nodes), self.init_sample_size, replace=False)
         # sampled_alpha[sample_idx] = 1
-        # create ones as sampled_alpha
-        self.sampled_alpha = np.ones(self.n_nodes)
+
         # self.data_embedding_view = DataEmbeddingView(sampled_alpha=sampled_alpha,
         #                                              xy=self.xy)
         self.data_embedding_view_xy = DataEmbeddingViewXy(xy=self.xy)
@@ -367,7 +437,6 @@ class EUG:
         self.groups_stream.add_subscriber(self._prepare_data_embedding_view)
         self.layer_selection.param.watch(self._prepare_data_embedding_view, 'value') 
         # self.data_embedding_view = DataEmbeddingView(sampled_alpha=sampled_alpha)
-        self.data_embedding_view_alpha = DataEmbeddingViewAlpha(alpha=self.sampled_alpha) 
         self.data_embedding_view_polys = DataEmbeddingViewPolys()
 
         self.data_embedding_view_thr_range = DataEmbeddingViewThrRange()
@@ -408,7 +477,7 @@ class EUG:
 
         # watch it
         self.graph_view_scatter_selection1d.add_subscriber(self._graph_view_scatter_selection1d_subscriber) 
-        
+        print('reach polys')
         self.graph_view_polys = hv.DynamicMap(pn.bind(draw.draw_embedding_view_polys,
                                                       layer=self.layer_selection,
                                                       colors=self.colors,
@@ -417,6 +486,7 @@ class EUG:
                      self.data_embedding_view_xy,
                      self.data_embedding_view_polys,
                      ])
+        print('polys is fine')
         
         self.graph_view_square = hv.DynamicMap(pn.bind(draw.draw_embedding_view_square,
                                                        layer=self.layer_selection,),
@@ -426,7 +496,7 @@ class EUG:
                      ])
         
         self.graph_view_overlay = (self.graph_view_square * self.graph_view_scatter * self.graph_view_polys).opts(
-            width=int(self.graph_view_width*0.6),
+            width=int(self.graph_view_width*0.7),
             height=int(self.graph_view_height*0.95),
             shared_axes=False,
         ) 
@@ -434,7 +504,7 @@ class EUG:
         self.graph_view_legend = hv.DynamicMap(pn.bind(draw.draw_embedding_view_legend,
                                                        colors=self.colors,),
             streams=[self.groups_stream]).opts(
-                width=int(self.graph_view_width*0.23),
+                width=int(self.graph_view_width*0.2),
                 height=int(self.graph_view_height*0.95),
             )
         # self.graph_view_legend = pn.pane.HoloViews()
@@ -460,9 +530,10 @@ class EUG:
             # self.graph_view_scatter + self.graph_view_legend,
             pn.Row(
                 # self.graph_view_scatter,
+                self.graph_view_legend,   
                 self.graph_view_overlay,
-                self.graph_view_legend,
             ),
+            # (self.graph_view_overlay + self.graph_view_legend), 
             # scatter,
             hide_header=True,
             name='Embedding View',
@@ -539,6 +610,7 @@ class EUG:
         )
 
 ### correlation view
+        print('reach correlation view')
         # idx_train = self.train_mask.nonzero().flatten()
         # idx_test = self.test_mask.nonzero().flatten()
         # idx_val = self.val_mask.nonzero().flatten()
@@ -551,7 +623,13 @@ class EUG:
         #                     idx_val, 
         #                     self.model, 
         #                     self.g)
-        self.individual_bias_metrics_stream = IndividualBiasMetrics(individual_bias_metrics=individual_bias.individual_bias_contribution(self.adj, self.feat, self.model, self.sens[0]))
+        self.contributions_selected_nodes_stream = ContributionsSelectedNodes(contributions_selected_nodes=[])
+        self.contributions_selected_nodes_stream.add_subscriber(self._contributions_selected_nodes_stream_subscriber)
+        print('reach individual bias')
+        self.individual_bias_metrics_stream = IndividualBiasMetrics(
+            individual_bias_metrics=individual_bias.individual_bias_contribution(self.adj, self.feat, self.model, self.sens[0],
+                                                                                 ))
+        print('individual bias is fine')
         # self.individual_bias_metrics = individual_bias.individual_bias_contribution(self.adj, self.feat, self.model, self.sens[0])
         # feat_train = self.feat[self.train_mask].cpu().numpy()
         feat_np = self.feat.cpu().numpy()
@@ -581,6 +659,7 @@ class EUG:
 
             indices = adj_mul.coalesce().indices()
             self.adj_mul_indices.append(indices)
+        print('degree is fine')
 
         # convert computational_graph_degrees to a np array
         self.computational_graph_degrees = torch.stack(computational_graph_degrees).cpu().numpy()    
@@ -644,7 +723,8 @@ class EUG:
         #         height=self.height_correlation_view_selection_degree, 
         #         width=self.width_correlation_view_selection_degree,
         #         ),).opts(shared_axes=False,)
-        options_dict = {f'Hop-{i+1} Corr.: {pearson_correlations_degree[i]:.2f} P-value: {pearson_p_vals_degree[i]:.2f}': i for i in range(self.max_hop)}
+        # options_dict = {f'Hop-{i+1} Corr.: {pearson_correlations_degree[i]:.2f} P-value: {pearson_p_vals_degree[i]:.2f}': i for i in range(self.max_hop)}
+        options_dict = {f'Hop-{i+1} Corr.: {pearson_correlations_degree[i]:.2f}': i for i in range(self.max_hop)}
         self.correlation_view_selection = pn.widgets.Select(name='Hops', options=options_dict,
                                                             width=int(self.correlation_view_width*0.93),
             )
@@ -663,6 +743,18 @@ class EUG:
         #             height=int(self.correlation_view_height*0.95)-60,
         #             shared_axes=False,
         #             )
+
+        # self.correlation_view_rectangles = hv.DynamicMap(draw.draw_correlation_view_rectangles,
+        #                                                  streams=[self.contributions_selected_nodes_stream]).opts(
+        #     width=int(self.correlation_view_width*0.93),
+        #     height=int(self.correlation_view_height*0.1),
+        #     shared_axes=False,
+        # )
+
+        self.correlation_view_latex1 = pn.pane.LaTeX('Bias Contributions')
+
+        self.correlation_view_latex2 = pn.pane.LaTeX('Separate: 0.00%    Composite: 0.00%')   
+ 
         self.correlation_view_hex = hv.DynamicMap(pn.bind(draw.draw_correlation_view_hex, 
                                                              feat=self.computational_graph_degrees, 
                                                             #  metric=self.individual_bias_metrics,
@@ -691,7 +783,8 @@ class EUG:
 
         self.correlation_view_degree = (self.correlation_view_hex * self.correlation_view_scatter_square * self.correlation_view_scatter).opts(width=int(self.correlation_view_width*0.93),
             height=int(self.correlation_view_height*0.95)-60,
-            shared_axes=False,
+            shared_axes=False, 
+            framewise=True
         )
 
         self.correlation_view = pn.Card(
@@ -733,6 +826,7 @@ class EUG:
             height=self.correlation_view_height,
             width=self.correlation_view_width,
             )
+        print('correlation view is fine')
 
 ### attribute view
         # # continuous attributes
@@ -789,6 +883,9 @@ class EUG:
 
         self.groups_stream.add_subscriber(self._update_correlations_groups_callback)
 
+        self.selected_attrs_ls_stream = SelectedAttrsLs(selected_attrs_ls=[[]])
+        self.selected_attrs_ls_stream.add_subscriber(self._selected_attrs_ls_stream_callback)
+
         self.attribute_view_overview_tap = streams.SingleTap()
         self.attribute_view_overview = hv.DynamicMap(pn.bind(draw.draw_attribute_view_overview, 
                                                              feat=pd.DataFrame(self.feat.cpu().numpy(), columns=self.feat_names),
@@ -800,9 +897,10 @@ class EUG:
                                                                  self.groups_stream,
                                                                  self.attribute_view_overview_tap,
                                                                  self.individual_bias_metrics_stream,
-                                                                 self.contributions_stream,])
+                                                                 self.contributions_stream,
+                                                                 self.selected_attrs_ls_stream,])
         # watch the tap
-        self.attribute_view_overview_tap.add_subscriber(self._update_attribute_view_detail_correlation)
+        self.attribute_view_overview_tap.add_subscriber(self._attribute_view_overview_tap_subscriber)
         # detail
         self.attribute_view_detail = pn.pane.HoloViews()
         # check if the 0-th feat is continuous or not
@@ -838,10 +936,13 @@ class EUG:
         #     height=self.attribute_view_height,
         #     width=self.attribute_view_width,
         #     )
+        print('attribute view is fine')
 
 ### density view
         # Create the scatter plot
+        print('reach process graph')
         self.extract_communities_args = community.process_graph(self.adj0)
+        print('process graph is fine')
         self._save_extract_communities_args()
         loaded_extract_communities_args = self._load_extract_communities_args()
         # deep copy self.extract_communities_args, which is a tuple
@@ -849,6 +950,7 @@ class EUG:
                                                               *loaded_extract_communities_args, 
                                                               self.extract_communities_args[3], 
                                                               0.5)
+        print('communities is fine')
 
         # self.node_communities = community.extract_communities(community.Tree(), 
         #                                                       *copy.deepcopy(self.extract_communities_args[1: 3]), 
@@ -936,9 +1038,18 @@ class EUG:
         #     )
         
 ### diagnostic panel
+        self.attr_selection_mode_button = pn.widgets.RadioButtonGroup(
+            name='Selection Mode',
+            options=['Single', 'Multiple'],
+            value='Single',
+        )
+
+        self.new_selection_button = pn.widgets.Button(name='New Selection')
+        self.new_selection_button.on_click(self._new_selection_button_callback)
+
         self.attribute_view_overview.opts(
             height=int(self.diagnostic_panel_height*0.5),
-            width=int(self.diagnostic_panel_width*0.93),
+            width=int(self.diagnostic_panel_width*0.83),
         )
         self.diagnostic_panel = pn.Card(
             # pn.Row(
@@ -959,7 +1070,13 @@ class EUG:
             #         self.attribute_view_correlation,
             #     ),
             # ),
-            self.attribute_view_overview,
+            pn.Row(
+                pn.Column(
+                    self.attr_selection_mode_button,
+                    self.new_selection_button
+                ),
+                self.attribute_view_overview,
+            ),
             pn.Row(
                 pn.Column(self.subgraph_view_heatmap),
                 pn.Column(self.attribute_view_detail),
@@ -973,7 +1090,10 @@ class EUG:
 
 ### structural bias overview
         self.structural_bias_overview = pn.Card(
+            self.correlation_view_latex1,
+            self.correlation_view_latex2, 
             self.correlation_view_selection,
+            # self.correlation_view_rectangles,
             self.correlation_view_degree,
             self.selected_communities_dropdown,
             self.density_view_scatter,
@@ -982,32 +1102,33 @@ class EUG:
             # height=int(height/2-80),
             # width=int(width/3),
             height=self.structural_bias_overview_height,
-            width=self.structural_bias_overview_width,
+            width=self.structural_bias_overview_width, 
         )       
 # control panel
         self.control_panel = pn.Card(
             pn.Column(
-            '### Global Selections',
-            pn.Row(
-                self.sens_name_selector, 
-                sens_name_confirm_control_panel_button,
-            ),
-            pn.Row(
-                self.data_selector,
-                data_select_control_panel_button,
-            ),
-            pn.layout.Divider(),
-            '### Embedding View Settings',
-            self.layer_selection, 
-            self.projection_selection,
-            self.node_sample_size_slider,
-            sample_button,
-            self.embedding_view_thr_slider,
-            pn.layout.Divider(),
-            '### Structural Bias Overview Settings',
-            self.min_threshold_slider, 
-            min_threshold_slider_button,
-            scroll=True,
+                '### Global Control',
+                pn.Row(
+                    self.sens_name_selector, 
+                    sens_name_confirm_control_panel_button,
+                ),
+                pn.Row(
+                    self.data_selector,
+                    data_select_control_panel_button,
+                ),
+                self.record_button,
+                pn.layout.Divider(), 
+                '### Embedding View Settings',
+                self.layer_selection, 
+                self.projection_selection,
+                self.node_sample_size_slider,
+                sample_button,
+                self.embedding_view_thr_slider,
+                pn.layout.Divider(),
+                '### Structural Bias Overview Settings',
+                self.min_threshold_slider, 
+                min_threshold_slider_button,
+                scroll=True,
             ),
             name='Control Panel',
             hide_header=True, 
@@ -1096,6 +1217,7 @@ class EUG:
         if node_sample_size < self.n_nodes:
             sampled_alpha = np.zeros(self.n_nodes)
             sample_idx = np.random.choice(np.arange(self.n_nodes), node_sample_size, replace=False)
+            self.sampled_idx_stream.event(sampled_idx=sample_idx)
             sampled_alpha[sample_idx] = 1
             self.sampled_alpha = sampled_alpha
         else:
@@ -1295,9 +1417,10 @@ class EUG:
             pearson_p_vals_degree = [np.nan for _ in range(self.max_hop)]
 
         # update the options of self.correlation_view_selection
-        options_dict = {f'Hop-{i+1} Corr.: {pearson_correlations_degree[i]:.2f} P-value: {pearson_p_vals_degree[i]:.2f}': i for i in range(self.max_hop)}
+        # options_dict = {f'Hop-{i+1} Corr.: {pearson_correlations_degree[i]:.2f} P-value: {pearson_p_vals_degree[i]:.2f}': i for i in range(self.max_hop)}
+        options_dict = {f'Hop-{i+1} Corr.: {pearson_correlations_degree[i]:.2f}': i for i in range(self.max_hop)}
         self.correlation_view_selection.options = options_dict
-        print('done')
+        # print('done')
         # self.data_correlation_view_selection_continuous.event(correlations=pearson_correlations, p_vals=pearson_p_vals)
         # self.data_correlation_view_selection_categorical.event(correlations=pointbiserial_correlations, p_vals=pointbiserial_p_vals)
         # self.data_correlation_view_selection_degree.event(correlations=pearson_correlations_degree, p_vals=pearson_p_vals_degree)
@@ -1320,74 +1443,109 @@ class EUG:
     #         # Append the generated plot to the list of plots
     #         self.attribute_view_violins.append(plot)
     #     self.attribute_view_violin.object = hv.Layout(self.attribute_view_violins).cols(1)
-    def _update_attribute_view_detail_correlation(self, x, y):
+    def _attribute_view_overview_tap_subscriber(self, x, y):
         x, y = y, x
-        # y = self.attribute_view_overview_tap.y
-        if y:
-            # get the data of self.attribute_view_overview
-            # print(self.attribute_view_overview.data)
-            df = self.attribute_view_overview.data[()].get('Rectangles.II').data
-            # print(df)
-            # find the corresponding id satisfying the y0 <= y <= y1
-            id = df[(df['y0'] <= y) & (df['y1'] >= y)]['ID']
-            if id.empty:
-                self.attribute_view_detail.object = None
-                self.attribute_view_correlation.object = None
-            else:
-                id = id.values[0]
-                feat = self.feat[:, id].cpu().numpy()
-                feat_name = self.feat_names[id]
-                if self.columns_categorical[id]:
-                    # self.attribute_view_detail.object = draw.draw_attribute_view_bar(feat, 
-                    #                                                                  feat_name, 
-                    #                                                                  self.groups_stream.groups,
-                    #                                                                  self.selected_nodes)
-                    self.attribute_view_detail.object = hv.DynamicMap(pn.bind(draw.draw_attribute_view_bar, 
-                                                                              variable_data=feat,
-                                                                              feat_name=feat_name),
-                                                                      streams=[self.selected_nodes_stream, self.groups_stream]).opts(
-                                                                                                                                    height=int(self.diagnostic_panel_height*0.45),
-                                                                                                                                    width=int(self.diagnostic_panel_width*0.4),
-                                                                                                                                )
-                    # self.attribute_view_correlation.object = draw.draw_attribute_view_correlation_violin(feat,
-                    #                                                                                      self.individual_bias_metrics,
-                    #                                                                                      self.selected_nodes)
-                    self.attribute_view_correlation.object = hv.DynamicMap(pn.bind(draw.draw_attribute_view_correlation_violin,
-                                                                                    feat=feat,
-                                                                                    # metric=self.individual_bias_metrics
-                                                                                    ),
-                                                                            streams=[self.selected_nodes_stream,
-                                                                                     self.individual_bias_metrics_stream]).opts(
-                                                                                                                        height=int(self.diagnostic_panel_height*0.45),
-                                                                                                                        width=int(self.diagnostic_panel_width*0.3),
-                                                                                                                    )
+        if not (self.previous_attribute_view_overview_tap_x == x and self.previous_attribute_view_overview_tap_y == y):
+            if y:
+                # get the data of self.attribute_view_overview
+                # print(self.attribute_view_overview.data)
+                df = self.attribute_view_overview.data[()].get('Rectangles.I').data
+                # find the corresponding id satisfying the y0 <= y <= y1
+                id = df[(df['y0'] <= y) & (df['y1'] >= y)]['ID']
+                if self.attr_selection_mode_button.value == 'Single':
+                    if id.empty:
+                        self.attribute_view_detail.object = None
+                        self.attribute_view_correlation.object = None
+                    else:
+                        id = id.values[0]
+                        feat = self.feat[:, id].cpu().numpy()
+                        feat_name = self.feat_names[id]
+                        if self.columns_categorical[id]:
+                            self.attribute_view_detail.object = hv.DynamicMap(pn.bind(draw.draw_attribute_view_bar, 
+                                                                                    variable_data=feat,
+                                                                                    feat_name=feat_name),
+                                                                            streams=[self.selected_nodes_stream, self.groups_stream]).opts(
+                                                                                                                                            height=int(self.diagnostic_panel_height*0.45),
+                                                                                                                                            width=int(self.diagnostic_panel_width*0.4),
+                                                                                                                                        )
+                            self.attribute_view_correlation.object = hv.DynamicMap(pn.bind(draw.draw_attribute_view_correlation_violin,
+                                                                                            feat=feat,
+                                                                                            # metric=self.individual_bias_metrics
+                                                                                            ),
+                                                                                    streams=[self.selected_nodes_stream,
+                                                                                            self.individual_bias_metrics_stream]).opts(
+                                                                                                                                height=int(self.diagnostic_panel_height*0.45),
+                                                                                                                                width=int(self.diagnostic_panel_width*0.3),
+                                                                                                                            )
+                        else:
+                            self.attribute_view_detail.object = hv.DynamicMap(pn.bind(draw.draw_attribute_view_violin,
+                                                                                        variable_data=feat,
+                                                                                        feat_name=feat_name),
+                                                                                streams=[self.selected_nodes_stream, self.groups_stream]).opts(
+                                                                                                                                                height=int(self.diagnostic_panel_height*0.45),
+                                                                                                                                                width=int(self.diagnostic_panel_width*0.4),
+                                                                                                                                            )
+                            self.attribute_view_correlation.object = hv.DynamicMap(pn.bind(draw.draw_attribute_view_correlation_hex,
+                                                                                            feat=feat,
+                                                                                            # metric=self.individual_bias_metrics
+                                                                                            ),
+                                                                                    streams=[self.selected_nodes_stream,
+                                                                                            self.individual_bias_metrics_stream]).opts(
+                                                                                                                            height=int(self.diagnostic_panel_height*0.45),
+                                                                                                                            width=int(self.diagnostic_panel_width*0.3),
+                                                                                                                        )
                 else:
-                    # self.attribute_view_detail.object = draw.draw_attribute_view_violin(feat, 
-                    #                                                                     feat_name, 
-                    #                                                                     self.groups_stream.groups,
-                    #                                                                     self.selected_nodes)
-                    self.attribute_view_detail.object = hv.DynamicMap(pn.bind(draw.draw_attribute_view_violin,
-                                                                                variable_data=feat,
-                                                                                feat_name=feat_name),
-                                                                        streams=[self.selected_nodes_stream, self.groups_stream]).opts(
-                                                                                                                                        height=int(self.diagnostic_panel_height*0.45),
-                                                                                                                                        width=int(self.diagnostic_panel_width*0.4),
-                                                                                                                                    )
-                    # self.attribute_view_correlation.object = draw.draw_attribute_view_correlation_hex(feat,
-                    #                                                                                   self.individual_bias_metrics,
-                    #                                                                                   self.selected_nodes)
-                    self.attribute_view_correlation.object = hv.DynamicMap(pn.bind(draw.draw_attribute_view_correlation_hex,
-                                                                                    feat=feat,
-                                                                                    # metric=self.individual_bias_metrics
-                                                                                    ),
-                                                                            streams=[self.selected_nodes_stream,
-                                                                                     self.individual_bias_metrics_stream]).opts(
-                                                                                                                    height=int(self.diagnostic_panel_height*0.45),
-                                                                                                                    width=int(self.diagnostic_panel_width*0.3),
-                                                                                                                )
+                    self.attribute_view_detail.object = None
+                    self.attribute_view_correlation.object = None
+                    if not id.empty:
+                        id = id.values[0]
+                        if id in self.selected_attrs_ls_stream.selected_attrs_ls[-1]:
+                            # self.selected_attrs_ls_stream.selected_attrs_ls[-1].remove(id)
+                            selected_attrs_ls = self.selected_attrs_ls_stream.selected_attrs_ls.copy()
+                            selected_attrs_ls[-1].remove(id)
+                            self.selected_attrs_ls_stream.event(selected_attrs_ls=selected_attrs_ls)
+                        else:
+                            # self.selected_attrs_ls_stream.selected_attrs_ls[-1].append(id)
+                            selected_attrs_ls = self.selected_attrs_ls_stream.selected_attrs_ls.copy()
+                            selected_attrs_ls[-1].append(id)
+                            self.selected_attrs_ls_stream.event(selected_attrs_ls=selected_attrs_ls)
+                            # tmp_ls = self.selected_attrs_ls_stream.selected_attrs_ls
+                            # new_ls = tmp_ls[: -1] + [tmp_ls[-1] + [id]]
+                            # self.selected_attrs_ls_stream.event(selected_attrs_ls=tmp_ls[:-1])
+                
+                # calculate the deleting area
+                selected_attrs_ls = self.selected_attrs_ls_stream.selected_attrs_ls.copy()
+                circle_gap = 2
+                r_sector1 = 0.45
+                n_selected_attrs = len(selected_attrs_ls)
+                n_all_nodes = self.n_nodes
+                n = self.n_feat
+                hw_ratio = int(self.diagnostic_panel_height*0.5)/int(self.diagnostic_panel_width*0.93)
+                ymax = n+1.5
+                ymin = 0 
+                xmax = n_all_nodes * 1.1 
+                xmin = (circle_gap * xmax * (n_selected_attrs + 1)) / (circle_gap * n_selected_attrs + circle_gap - hw_ratio * ymax + hw_ratio * ymin)
+                x_y_ratio = (xmax - xmin) / (ymax - ymin) / hw_ratio 
+                y_pos = n + 0.5 
+                for i, selected_attrs in enumerate(selected_attrs_ls): 
+                    x_pos = -circle_gap * (0.5 + i + 1) * x_y_ratio
+                    if selected_attrs:
+                        x_left = x_pos - r_sector1 * x_y_ratio 
+                        x_right = x_pos + r_sector1 * x_y_ratio
+                        y_bottom = y_pos - r_sector1 
+                        y_top = y_pos + r_sector1
+                        # check if (x, y) is in the deleting area
+                        if x_left <= x <= x_right and y_bottom <= y <= y_top:
+                            selected_attrs_ls.pop(i)
+                            self.selected_attrs_ls_stream.event(selected_attrs_ls=selected_attrs_ls)
+                            contributions_selected_attrs = self.contributions_stream.contributions_selected_attrs.copy() 
+                            tmp_contributions_selected_attrs = np.delete(contributions_selected_attrs, i)
+                            self.contributions_stream.event(contributions_selected_attrs=tmp_contributions_selected_attrs)
+                            break
+        self.previous_attribute_view_overview_tap_x, self.previous_attribute_view_overview_tap_y = x, y
 
-    def _update_selected_communities_dropdown(self, index):
-        print('in _update_selected_communities_dropdown')
+    def _update_selected_communities_dropdown(self, index): 
+        # print('in _update_selected_communities_dropdown')  
         if index:
             self.selected_communities_dropdown.options = [str(list(self.node_communities[i]))[1:-1] for i in index]
         else:
@@ -1419,14 +1577,14 @@ class EUG:
         Create a mask for the selected data categories (train, val, test, other).
         """
         mask = torch.zeros_like(self.train_mask).bool()
-        if 'train' in self.data_selector.value:
+        if 'Train' in self.data_selector.value:
             mask = mask | self.train_mask
-        if 'val' in self.data_selector.value:
+        if 'Val' in self.data_selector.value:
             mask = mask | self.val_mask
-        if 'test' in self.data_selector.value:
+        if 'Test' in self.data_selector.value:
             mask = mask | self.test_mask
-        if 'other' in self.data_selector.value:
-            mask = mask | self.other_mask
+        if 'Unlabeled' in self.data_selector.value:
+            mask = mask | self.other_mask 
         return mask
 
     # def _sens_name_confirm_control_panel_button_callback(self, event):
@@ -1439,7 +1597,7 @@ class EUG:
 
     # def _update_fairness_metric_detail(self, event, metric_name):
     def _update_fairness_metric_detail(self, index):
-        print('in _update_fairness_metric_detail')
+        # print('in _update_fairness_metric_detail')
         if index:
             metric_name = index[0]
             chart = hv.DynamicMap(pn.bind(draw.draw_fairness_metric_view_detail,
@@ -1514,7 +1672,23 @@ class EUG:
             groups=self.groups_stream.groups)
         self.contributions_stream.event(contributions=contributions)
 
-    def _update_correlations_groups_callback(self, groups):
+        # update self.contributions_selected_nodes_stream
+        individual_bias_metrics = self.individual_bias_metrics_stream.individual_bias_metrics
+        sic = individual_bias_metrics[self.selected_nodes_stream.selected_nodes].sum()
+        gc = individual_bias.group_bias_contribution(
+            self.adj,
+            self.feat,
+            self.model,
+            self.groups_stream.groups,
+            self.selected_nodes_stream.selected_nodes
+        )
+        self.contributions_selected_nodes_stream.event(contributions_selected_nodes=[sic, gc])
+
+    def _contributions_selected_nodes_stream_subscriber(self, contributions_selected_nodes):
+        # update correlation_view_md
+        self.correlation_view_latex2.object = f'Separate: {(contributions_selected_nodes[0] * 100):.2f}%    Composite: {(contributions_selected_nodes[1] * 100):.2f}%'
+
+    def _update_correlations_groups_callback(self, groups): 
         # update contributions
         contributions = util.calc_contributions(
             model=self.model,
@@ -1562,10 +1736,12 @@ class EUG:
 
         min_thr, max_thr, polygons_lst, max_edges_lst = RangesetCategorical.pre_compute_contours(colormap, 
                                                                                                  xy, layer, groups)
+        print('pre contours is fine')
         # update polygons_lst, max_edges_lst in the data_embedding_view
         # self.data_embedding_view.event(polygons_lst=polygons_lst, max_edges_lst=max_edges_lst)
         self.data_embedding_view_polys.event(polygons_lst=polygons_lst, max_edges_lst=max_edges_lst)
         self.data_embedding_view_thr_range.event(min_thr=min_thr, max_thr=max_thr)
+        print('event done')
 
     def _update_thr_range(self, min_thr, max_thr):
         self.embedding_view_thr_slider.start = self.data_embedding_view_thr_range.min_thr
@@ -1573,8 +1749,8 @@ class EUG:
         self.embedding_view_thr_slider.value = (self.data_embedding_view_thr_range.max_thr - self.data_embedding_view_thr_range.min_thr) / 10
 
     def _graph_view_scatter_selection1d_subscriber(self, index):
-        print('in _graph_view_scatter_selection1d_subscriber')
-        print(index)
+        # print('in _graph_view_scatter_selection1d_subscriber')
+        # print(index)
         if index:
             if len(index) > 1:
                 self.selected_nodes_stream.event(selected_nodes=np.array(index))
@@ -1584,12 +1760,35 @@ class EUG:
                 selected_nodes = adj_mul_indices_current[1, adj_mul_indices_current[0] == idx].cpu().numpy()
                 if idx not in selected_nodes:
                     selected_nodes = np.append(selected_nodes, idx)
-                print(selected_nodes) 
+                # print(selected_nodes) 
                 self.selected_nodes_stream.event(selected_nodes=selected_nodes)
         else:
             self.selected_nodes_stream.event(selected_nodes=self.node_indices)
 
-    # def _correlation_view_scatter_selection1d_subscriber(self, index):
+    def _selected_attrs_ls_stream_callback(self, selected_attrs_ls):
+        # print('in _selected_attrs_ls_stream_callback')
+        if selected_attrs_ls[-1]:
+            # update contributions_stream.contributions_selected_attrs[-1] according to the selected_attrs_ls[-1]
+            contribution_selected_attrs = util.calc_attr_contributions(
+                model=self.model,
+                g=self.g, 
+                feat=self.feat,
+                selected_nodes=self.selected_nodes_stream.selected_nodes,
+                groups=self.groups_stream.groups,
+                attr_indices=selected_attrs_ls[-1]
+            )
+            # print(contribution_selected_attrs) 
+            # self.contributions_stream.contributions_selected_attrs[-1] = contribution_selected_attrs
+            contributions_selected_attrs = self.contributions_stream.contributions_selected_attrs.copy() 
+            contributions_selected_attrs[-1] = contribution_selected_attrs
+        else:
+            contributions_selected_attrs = self.contributions_stream.contributions_selected_attrs.copy() 
+            contributions_selected_attrs[-1] = 0.
+        # print(contributions_selected_attrs)
+        self.contributions_stream.event(contributions_selected_attrs=contributions_selected_attrs) 
+        # print(self.contributions_stream.contributions_selected_attrs)
+
+    # def _correlation_view_scatter_selection1d_subscriber(self, index): 
     #     print('in _correlation_view_scatter_selection1d_subscriber')
     #     print(index)
     #     if index:
@@ -1616,3 +1815,21 @@ class EUG:
             # self.extract_communities_args = pickle.load(file)
             ret = pickle.load(file)
         return ret
+
+    def _new_selection_button_callback(self, event):
+        # create a new list of selected attributes
+        selected_attrs_ls = self.selected_attrs_ls_stream.selected_attrs_ls.copy()
+        selected_attrs_ls.append([])
+        self.selected_attrs_ls_stream.event(selected_attrs_ls=selected_attrs_ls)
+        # append a 0. to self.contributions_stream.contributions_selected_attrs
+        contributions_selected_attrs = self.contributions_stream.contributions_selected_attrs.copy()
+        contributions_selected_attrs_tmp = np.append(contributions_selected_attrs, 0.)
+        self.contributions_stream.event(contributions_selected_attrs=contributions_selected_attrs_tmp)
+
+    def _record_button_callback(self, event):
+        selected_nodes = self.selected_nodes_stream.selected_nodes
+        selected_attrs = self.selected_attrs_ls_stream.selected_attrs_ls[-1] 
+        self.records.append({'Nodes': selected_nodes, 'Attributes': selected_attrs})   
+
+    def get_records(self):
+        return self.records

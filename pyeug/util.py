@@ -814,9 +814,35 @@ def calc_contributions(model, g, feat, selected_nodes, groups):
             embeddings_perturbed = model(g, feat_clone)
         dist_perturbed = individual_bias.avg_dist(groups, embeddings_perturbed)
         contributions[i] = dist_perturbed
-    contributions = ori_dist - contributions
+    contributions = (ori_dist - contributions) / ori_dist 
     return contributions
 
         
+def calc_attr_contributions(model, g, feat, selected_nodes, groups, attr_indices):
+    feat_mean = feat.mean(dim=tuple(range(feat.dim() - 1)))
 
+    # Set the model to evaluation
+    model.eval()
+    # Get the embeddings
+    with torch.no_grad():
+        embeddings = model(g, feat)
+    ori_dist = individual_bias.avg_dist(groups, embeddings) 
+
+    feat_clone = feat.clone().detach()
+    # feat_clone[..., selected_nodes, :][..., attr_indices] = feat_mean[attr_indices] 
+    # Indices for rows and columns where the values need to be set to 1
+    row_indices = torch.tensor(selected_nodes)  # Rows 1 and 3
+    col_indices = torch.tensor(attr_indices)  # Columns 0 and 2
+
+    # Convert row and column indices to a meshgrid of indices
+    rows, cols = torch.meshgrid(row_indices, col_indices, indexing='ij')
+
+    # Use fancy indexing to set the specified elements to 1
+    feat_clone[rows, cols] = feat_mean[attr_indices] 
+
+    with torch.no_grad():
+        embeddings_perturbed = model(g, feat_clone)
+    dist_perturbed = individual_bias.avg_dist(groups, embeddings_perturbed) 
+    contributions = (ori_dist - dist_perturbed) / ori_dist 
+    return contributions
 

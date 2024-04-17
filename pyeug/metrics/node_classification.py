@@ -441,7 +441,8 @@ def delta_max_acc(predictions, labels, groups):
     Returns:
     float: The calculated Δacc metric value.
     """
-    unique_groups = np.unique(groups)
+    # print(groups)
+    unique_groups = np.unique(groups) 
     accuracies = []
 
     for group in unique_groups:

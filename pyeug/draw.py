@@ -30,10 +30,41 @@ from bokeh.models import CategoricalColorMapper
 from bokeh.models import CustomJS
 
 hv.extension('bokeh')
-
+ 
 PERPLEXITY = 15 # german
 SEED = 42
 
+# COLOR_TRUE = '#FFEEDA' # orange
+# COLOR_FALSE = '#DBE3E8' # blue
+# light
+# COLOR_TRUE = '#FFF7ED' # orange
+# COLOR_FALSE = '#BDC5CB' # blue
+# dark
+COLOR_TRUE = '#DAC5A9' # orange
+COLOR_FALSE = '#6E808C' # blue
+
+# END_COLOR = '#FFDADA' # pink
+# START_COLOR = '#CDE1EE' # blue
+# light
+# END_COLOR = '#FFDBDB' # pink
+# START_COLOR = '#BDC5CB' # blue
+# dark
+END_COLOR = '#DAA9A9' # pink
+START_COLOR = '#6E808C' # blue
+# Create a custom continuous colormap
+CONTINUOUS_CMAP = mcolors.LinearSegmentedColormap.from_list("custom_gradient", [START_COLOR, END_COLOR])
+
+LINE_GREY_COLOR = '#999999'
+FILL_GREY_COLOR = '#CCCCCC'  
+
+# BAR_COLOR1 = '#FFDADA' # pink
+# BAR_COLOR0 = '#D2F6D2' # green
+# light
+# BAR_COLOR1 = '#FFDBDB' # pink
+# BAR_COLOR0 = '#D2E2D2' # green
+# dark
+BAR_COLOR1 = '#DAA9A9' # pink
+BAR_COLOR0 = '#87AF87' # green
 
 # def draw_embedding_view(xy, layer, groups, sampled_alpha, colors, polygons_lst, max_edges_lst, threshold, index):
 #     node_size = 3
@@ -47,7 +78,7 @@ SEED = 42
 #     colormap = {sens_selected_unique[i]: colors[i] for i in range(len(sens_selected_unique))}
 #     color_column = [colormap[group] for group in groups]
 
-#     # if index is an empty list
+#     # if index is an empty list 
 #     if not index:
 #         print('index is empty')
 #         print(index)
@@ -138,7 +169,7 @@ def draw_embedding_view_scatter(xy, layer, groups, alpha, colors):
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
         border=0,
         # show the toolbar at the top
-        toolbar='above',
+        toolbar='right',
         xlim=(xmin - abs(xmin) * 0.1, xmax + abs(xmax) * 0.1), 
         ylim=(ymin - abs(ymin) * 0.1, ymax + abs(ymax) * 0.1), 
         xaxis=None, yaxis=None, 
@@ -162,14 +193,16 @@ def draw_embedding_view_polys(xy, layer, groups, colors, polygons_lst, max_edges
     colormap = {sens_selected_unique[i]: colors[i] for i in range(len(sens_selected_unique))}
 
     # Calculate and draw polygons (regions or clusters) as before
+    print('reach compute contours')
     poly_df = RangesetCategorical.compute_contours(colormap, polygons_lst, max_edges_lst, threshold)
+    print('compute contours is fine')
     polys = hv.Polygons([{('x', 'y'): list(zip(poly_df.iloc[i]['xs'][0][0], poly_df.iloc[i]['ys'][0][0])), 
                           'level': poly_df.iloc[i]['color']} for i in range(len(poly_df))], vdims='level')
     polys.opts(color='level', line_width=0, alpha=0.3, framewise=True, active_tools=[], tools=[]).opts(
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
         border=0,
         # show the toolbar at the top
-        toolbar='above',
+        toolbar='right',
         # set x and y ranges according to x and y
         xlim=(xmin - abs(xmin) * 0.1, xmax + abs(xmax) * 0.1), 
         ylim=(ymin - abs(ymin) * 0.1, ymax + abs(ymax) * 0.1), 
@@ -209,6 +242,13 @@ def draw_embedding_view_square(xy, layer, index):
         scatter = hv.Scatter([]) 
     return scatter.opts(  
         opts.Scatter(size=5, color='black', line_color='black', fill_alpha=0, line_width=3, marker='s') 
+    ).opts(
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+        border=0,
+        # show the toolbar at the top
+        toolbar='right',
+        xaxis=None, yaxis=None,  
+        shared_axes=False,
     )
 
 
@@ -296,18 +336,19 @@ def draw_embedding_view_legend(groups, colors):
     # print(color_column)
     # draw the points
     points = hv.Points((x_legend, y_legend, color_column), vdims=['color']) \
-        .opts(opts.Points(size=5, color='color', xaxis=None, yaxis=None))
+        .opts(opts.Points(size=5, color='color', xaxis=None, yaxis=None)) 
     # draw the texts
     for i, text in enumerate(texts):
         points = points * hv.Text(x_legend[i] + 0.6, y_legend[i], text, halign='left', valign='center', fontsize=6)
-    points.opts(show_legend=False, 
-                toolbar=None,
-                shared_axes=False,
-                # x range
-                xlim=(-1, 10),
-                ylim=(-0.1, 0.1+1),
-                hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-                border=0
+    points.opts(
+        show_legend=False, 
+        toolbar=None,
+        shared_axes=False,
+        # x range
+        xlim=(-1, 10),
+        ylim=(-0.1, 0.1+1),
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+        border=0
     )
 
     return points
@@ -343,10 +384,18 @@ def draw_embedding_view_legend(groups, colors):
 
 
 def draw_bar_metric_view(data, metric_name):
+    # Define a custom hover tool
+    custom_hover = HoverTool(
+        tooltips=[
+            (metric_name, '@{'+metric_name+'}')  # dynamically use the metric name for the tooltip
+        ]
+    )
     # Creating a bar chart
     bar_chart = hv.Bars(data, 'Sensitive Subgroup', metric_name).opts(opts.Bars(xrotation=90)).opts(
-        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-        fill_color='#717171'
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)], 
+        fill_color=FILL_GREY_COLOR,  
+        line_color=None ,
+        tools=[custom_hover], 
     )
     return bar_chart
 
@@ -364,10 +413,19 @@ def draw_heatmap_metric_view(data, xlabel, ylabel, title):
     Returns:
     hv.HeatMap: A Holoviews HeatMap object.
     """
+
+    # Define a custom hover tool
+    custom_hover = HoverTool(
+        tooltips=[
+            ('Value', '@{z}')  # The '@{z}' refers to the z-values in the data
+        ]
+    )
+
     heatmap = hv.HeatMap(data).opts(
-        tools=['hover'], 
+        tools=[custom_hover],  
         colorbar=True, 
-        cmap='Viridis', 
+        # cmap='Viridis', 
+        cmap=CONTINUOUS_CMAP,
         xlabel=xlabel, 
         ylabel=ylabel, 
         title=title,
@@ -447,7 +505,8 @@ def draw_correlation_view_hex(index, feat, individual_bias_metrics, gridsize=30)
         xrotation=90,
         framewise=True,
         shared_axes=False,
-        alpha=1
+        alpha=1,
+        cmap=CONTINUOUS_CMAP
     )
 
 
@@ -456,6 +515,9 @@ def draw_correlation_view_scatter(index, feat, individual_bias_metrics, groups, 
     # Data preparation
     x = feat[index]
     y = individual_bias_metrics
+    
+    xmin, xmax = x.min(), x.max()
+    ymin, ymax = y.min(), y.max()
 
     sens_selected = groups
     sens_selected_unique = np.unique(sens_selected)
@@ -481,11 +543,42 @@ def draw_correlation_view_scatter(index, feat, individual_bias_metrics, groups, 
         border=0,
         # show the toolbar at the top
         # toolbar='above',
-        xaxis=None, yaxis=None, 
         shared_axes=False,
+        xlim=(xmin - abs(xmin) * 0.1, xmax + abs(xmax) * 0.1),
+        ylim=(ymin - abs(ymin) * 0.1, ymax + abs(ymax) * 0.1), 
     )
 
     return scatter
+
+
+# def draw_correlation_view_rectangles(contributions_selected_nodes):
+#     if contributions_selected_nodes:
+#         sum_individual_contribution = contributions_selected_nodes[0]
+#         group_contribution = contributions_selected_nodes[1]
+#         data = [(0, 0, sum_individual_contribution, 1), 
+#                 (sum_individual_contribution, 0, sum_individual_contribution + group_contribution, 1)]
+#         xticks = [(sum_individual_contribution / 2, 'Sum(Ind. Con.)'), 
+#                   (sum_individual_contribution + group_contribution / 2, 'Group Con.')]
+#         ret = hv.Rectangles(data).opts(
+#             xticks=xticks,
+#             xlim=(0, group_contribution), 
+#             xaxis=True
+#         )
+#     else: 
+#         ret = hv.Rectangles([]) .opts(
+#             xaxis=None   
+#         )
+
+#     return ret.opts(
+#             hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+#             border=0,
+#             shared_axes=False,
+#             xlabel='',
+#             yaxis=None,
+#             toolbar=None,
+#             ylim=(0, 1),
+#             framewise=True 
+#         )
 
 
 def draw_correlation_view_square(hop, feat, individual_bias_metrics, index):
@@ -494,55 +587,56 @@ def draw_correlation_view_square(hop, feat, individual_bias_metrics, index):
         x = feat[hop]
         y = individual_bias_metrics
         x_selected = x[index]
-        y_selected = y[index]
+        y_selected = y[index] 
         # Create a scatter plot for the selected points
         scatter = hv.Scatter((x_selected, y_selected))
     else:
         # If no points are selected, return an empty scatter plot
         scatter = hv.Scatter([])
     return scatter.opts(
-        opts.Scatter(size=5, color='red', line_color='black', fill_alpha=0, line_width=3, marker='s')
+        opts.Scatter(size=5, color='red', line_color='black', fill_alpha=0, line_width=3, marker='s',
+                     framewise=True)
     )
     
 
 
-def draw_correlation_view_violin(x, y, feat, metric, selected_nodes):
-    if x is None:
-        index = 0
-    else:
-        index = int(x)  # Assuming x-coordinate corresponds to the index
-    x_data = feat[index][selected_nodes]
-    y_data = metric[selected_nodes]
-    data = pd.DataFrame({'feat': x_data, 'metric': y_data})
-    violin_list = [hv.Violin(data[data['feat'] == i], vdims='metric') for i in data['feat'].unique()]
-    violin_plot = hv.Overlay(violin_list)
-    violin_plot.opts(opts.Violin(tools=['hover'], cmap='Category20')).opts(
-        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)]
-    )
+# def draw_correlation_view_violin(x, y, feat, metric, selected_nodes):
+#     if x is None:
+#         index = 0
+#     else:
+#         index = int(x)  # Assuming x-coordinate corresponds to the index
+#     x_data = feat[index][selected_nodes]
+#     y_data = metric[selected_nodes]
+#     data = pd.DataFrame({'feat': x_data, 'metric': y_data})
+#     violin_list = [hv.Violin(data[data['feat'] == i], vdims='metric') for i in data['feat'].unique()]
+#     violin_plot = hv.Overlay(violin_list)
+#     violin_plot.opts(opts.Violin(tools=['hover'], cmap='Category20')).opts(
+#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)]
+#     )
 
-    return violin_plot
+#     return violin_plot
 
 
-def draw_correlation_view_legend(cmap_name='coolwarm'):
-    # Get the colormap
-    cmap = plt.get_cmap(cmap_name)
+# def draw_correlation_view_legend(cmap_name='coolwarm'):
+#     # Get the colormap
+#     cmap = plt.get_cmap(cmap_name)
 
-    # Convert the colormap to a list of colors in hexadecimal format
-    colors = [mcolors.rgb2hex(cmap(i)) for i in range(cmap.N)]
+#     # Convert the colormap to a list of colors in hexadecimal format
+#     colors = [mcolors.rgb2hex(cmap(i)) for i in range(cmap.N)]
 
-    # Define a 1D array
-    data = np.linspace(-1, 1, 256)
+#     # Define a 1D array
+#     data = np.linspace(-1, 1, 256)
 
-    # Add an extra dimension to make it a 2D array
-    data = data[None, :]
+#     # Add an extra dimension to make it a 2D array
+#     data = data[None, :]
 
-    # Create an Image with the 2D array and apply the colormap
-    img = hv.Image(data, bounds=(-1,0,1,0.1)).opts(cmap=colors, colorbar=False, yaxis=None, 
-                                                toolbar=None, framewise=True, title='',
-                                                xlabel='Correlation',
-                                                hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)])
+#     # Create an Image with the 2D array and apply the colormap
+#     img = hv.Image(data, bounds=(-1,0,1,0.1)).opts(cmap=colors, colorbar=False, yaxis=None, 
+#                                                 toolbar=None, framewise=True, title='',
+#                                                 xlabel='Correlation',
+#                                                 hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)])
     
-    return img
+#     return img
 
 
 def draw_density_view_scatter(graph_metrics):
@@ -555,7 +649,7 @@ def draw_density_view_scatter(graph_metrics):
                              hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
                              framewise=True,
                              # set the color to #717171
-                             color='#717171',
+                             color=FILL_GREY_COLOR,
                              size=5
                              )
 
@@ -582,7 +676,7 @@ def draw_density_view_scatter(graph_metrics):
 
 #     return heatmap
 def draw_subgraph_view_heatmap(selected_nodes, adj):
-    colors = ["white", "#717171"]  # Colors from 0 to 1
+    colors = ["white", FILL_GREY_COLOR]  # Colors from 0 to 1
     cmap = LinearSegmentedColormap.from_list("custom_cmap", colors, N=2)
     if len(selected_nodes) != adj.shape[0]:
         # Extract non-zero indices
@@ -638,9 +732,10 @@ def draw_attribute_view_violin(variable_data, feat_name, groups, selected_nodes)
                                                     xlabel='Sensitive Subgroup',
                                                     hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
                                                     shared_axes=False,
-                                                    violin_fill_color='#717171',
+                                                    violin_fill_color=FILL_GREY_COLOR,
                                                     xrotation=90,
-                                                    framewise=True,)
+                                                    framewise=True, 
+                                                    violin_line_color=None)  
     
     return violin
 
@@ -735,7 +830,7 @@ def draw_attribute_view_bar(variable_data, feat_name, groups, selected_nodes):
     # Ensure variable_data and groups are pandas Series with the same length
     if isinstance(variable_data, np.ndarray):
         variable_data = pd.Series(variable_data, name=feat_name)
-    if isinstance(groups, np.ndarray):
+    if isinstance(groups, np.ndarray): 
         groups = pd.Series(groups, name="Group")
 
     variable_data = variable_data.iloc[selected_nodes]
@@ -760,10 +855,15 @@ def draw_attribute_view_bar(variable_data, feat_name, groups, selected_nodes):
     # # Count occurrences of each category within each group
     # aggregated_df = df.groupby(['Group', feat_name]).size().reset_index(name='Count')
 
+    # Create custom hover tool
+    custom_hover = HoverTool(tooltips=[
+        ('Count', '@Count')  # Display the 'Count' column values
+    ])
+
     # # Create the bar chart
     # bars = hv.Bars(aggregated_df, ['Group', feat_name], 'Count').opts(
     bars = hv.Bars(df, ['Group', feat_name], 'Count').aggregate(function=np.sum).opts(
-        stacked=False, tools=['hover'],
+        stacked=False, tools=[custom_hover], 
         xlabel='Sensitive Subgroup', ylabel='Count',
     #   title=f'{feat_name} (p={chi2_p:.3f})',
         shared_axes=False,
@@ -771,20 +871,26 @@ def draw_attribute_view_bar(variable_data, feat_name, groups, selected_nodes):
         invert_axes=True,
         multi_level=False,
         # color='',
-        cmap=['white', '#717171'],
+        cmap=[BAR_COLOR0, BAR_COLOR1],
         # put legend on the right
         legend_position='right',
         # put toolbar on the top
         toolbar='above',
+        line_color=None
     )
 
     return bars
 
 
 def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nodes, 
-                                 individual_bias_metrics, x, y, contributions, hw_ratio):
-    print(contributions)
+                                 individual_bias_metrics, x, y, contributions, 
+                                 contributions_selected_attrs,
+                                 hw_ratio,
+                                 selected_attrs_ls):
+    # print(contributions)
     n_all_nodes = len(feat)
+    n_selected_attrs = len(selected_attrs_ls)
+    # print(selected_attrs_ls)
     # print(groups)
     groups = pd.Series(groups, name="Group")
     bias_indicators, overall_bias_indicators, ns, all_ns, all_unique_groups = util.analyze_bias(feat, groups, columns_categorical, selected_nodes)
@@ -793,13 +899,17 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
     # print(ns)
     # ns being the number of each unique value in 
     m = len(ns)
-    # print(ns)
+    # print(ns) 
     n = len(overall_bias_indicators)
 
-    xmin = -n_all_nodes / 10 - 5 -2 
-    xmax = n_all_nodes * 1.1
+    circle_gap = 2
+
+    ymax = n+1.5
     ymin = 0
-    ymax = n+1
+    xmax = n_all_nodes * 1.1 
+    # xmin = -n_all_nodes / 10 - 7 - circle_gap * n_selected_attrs * (xmax / (ymax - ymin)) / hw_ratio
+    # solve: xmin = -circle_gap * (1 + n_selected_attrs) * ((xmax - xmin) / (ymax - ymin)) / hw_ratio
+    xmin = (circle_gap * xmax * (n_selected_attrs + 1)) / (circle_gap * n_selected_attrs + circle_gap - hw_ratio * ymax + hw_ratio * ymin)
 
     # Prepare the data for Rectangles
     rect_data = []
@@ -818,34 +928,41 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
     column_centers = [sum(all_ns[:i+1]) - all_ns[i]/2 for i in range(m)]
     # create yticks using column_centers and all_unique_groups
     yticks = [(c, all_unique_groups[i]) for i, c in enumerate(column_centers)]
-
+    custom_hover = HoverTool(tooltips=[('Attr.:', '@{ID}')])
     # Create the Rectangles plot
     plot = hv.Rectangles(rect_data, vdims=['Color', 'ID']).opts(
         opts.Rectangles(
                         # tools=['tap'], active_tools=['tap'],
                         color=hv.dim('Color').categorize(
-                            {False: '#87CEEB', True: '#FF6347'}),
+                            {False: COLOR_FALSE, True: COLOR_TRUE}
+                        ),
                         # yformatter='%.0f',  # Show integers on y-axis
-                        # yticks=list(range(n)),  # Set y-axis ticks
+                        # yticks=list(range(n)),  # Set y-axis ticks 
                         # yaxis=None,  # Hide y-axis
                         xaxis=None,  # Hide x-axis
                         xlabel='Sensitive Subgroup',  # X-axis label
                         yticks=yticks,
                         line_width=0.1,
+                        framewise=True,
                         # alpha=0.3,
                         # xrotation=90
+                        tools=[custom_hover]
                         ))  # Column tick labels
     
     # glyph plot
-    r_sector1 = 0.48
+    r_sector1 = 0.45
     r_ellipse1 = r_sector1 * 1.5
     r_ellipse2 = r_sector1
     r_sector2 = r_sector1 / 2 
-
-    circle_x = -n_all_nodes / 20 - 2
+    r_trans_circle = r_sector1 * 2
+    r_selected_attr_circle = r_sector1 * 1.5
+    r_selected_attr_sector = r_sector1
 
     # calculate the proportion of x range / y range
     x_y_ratio = (xmax - xmin) / (ymax - ymin) / hw_ratio
+
+    # circle_x = -n_all_nodes / 20 - 2
+    circle_x = -circle_gap / 2 * x_y_ratio
 
     # # Calculate correlations and p-values
     feat_np = feat.to_numpy()
@@ -871,14 +988,18 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
         p_values.append(p_val)
 
     # contributions is a 1d np array, get the max absolute value
-    max_contrib = np.max(np.abs(contributions))
-    # Normalize contributions to [-1, 1]
+    contributions_selected_attrs = np.array(contributions_selected_attrs)
+    max_contrib = np.max(np.concatenate([np.abs(contributions), np.abs(contributions_selected_attrs)]))
+    # Normalize contributions to [-1, 1] 
     normalized_contributions = contributions / max_contrib
     sector_pointes1_angles = normalized_contributions * 180
-
+    normalized_contributions_selected_attrs = contributions_selected_attrs / max_contrib
+    selected_attr_sector_angles = normalized_contributions_selected_attrs * 180
+ 
     n = bias_indicators.shape[0]
 
     ellipse_data = []
+    hover_data = []
     for i in range(n):
         # sector_pointes1: contributions
         end_angle = sector_pointes1_angles[i]
@@ -887,13 +1008,13 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
                                         x_y_ratio = x_y_ratio,
                                         start_angle=90,
                                         end_angle=90-end_angle,)
-        sector_data1 = {('x', 'y'): sector_points1, 'color': '#717171'}
+        sector_data1 = {('x', 'y'): sector_points1, 'color': FILL_GREY_COLOR}
         ellipse_data.append(sector_data1)
 
         # ellipse1: overall bias indicators
         # # Determine color based on row index relative to k
         # color = 'green' if i < k else 'red'
-        color = '#FF6347' if overall_bias_indicators[i] else '#87CEEB'
+        color = COLOR_TRUE if overall_bias_indicators[i] else COLOR_FALSE
         e = hv.Ellipse(circle_x, i + 0.5, (x_y_ratio * r_ellipse1, r_ellipse1))
         e_data = {('x', 'y'): e.array(), 'color': color}
         ellipse_data.append(e_data)
@@ -905,7 +1026,8 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
 
         # sector_points2: angle for correlations, color for p-values
         p_val = p_values[i]
-        color = '#FF6347' if p_val < 0.05 else '#87CEEB'
+        # color = COLOR_TRUE if p_val < 0.05 else COLOR_FALSE
+        color = FILL_GREY_COLOR
         correlation = correlations[i]
         end_angle = 360 * correlation
         sector_points2 = create_sector(center=(circle_x, i + 0.5), 
@@ -916,9 +1038,68 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
         sector_data2 = {('x', 'y'): sector_points2, 'color': color}
         ellipse_data.append(sector_data2)
 
+        # transparent circle for hovering
+        trans_circle = hv.Ellipse(circle_x, i + 0.5, (x_y_ratio * r_trans_circle, r_trans_circle))
+        trans_circle_data = {('x', 'y'): trans_circle.array(),
+                             'Bias Contribution': contributions[i],
+                             'Attribute Bias': 'true' if overall_bias_indicators[i] else 'false',
+                             'Abs Corr(Attr, Contribution)': correlations[i]}
+        hover_data.append(trans_circle_data)
+
+    x_data = []
+    for i, selected_attrs in enumerate(selected_attrs_ls):
+        # attr selection circles
+        x_pos = circle_x - circle_gap * x_y_ratio * (i + 1)
+        for selected_attr in selected_attrs:
+            y_pos = selected_attr + 0.5
+            # attr contribution sector
+            end_angle = selected_attr_sector_angles[i]
+            selected_attr_sector = create_sector(center=(x_pos, y_pos),
+                                            radius=r_selected_attr_sector,
+                                            x_y_ratio = x_y_ratio,
+                                            start_angle=90,
+                                            end_angle=90-end_angle,)
+            sector_data1 = {('x', 'y'): selected_attr_sector, 'color': FILL_GREY_COLOR}
+            ellipse_data.append(sector_data1)
+            # inner circle
+            e = hv.Ellipse(x_pos, y_pos, (x_y_ratio * r_selected_attr_circle, r_selected_attr_circle))
+            e_data = {('x', 'y'): e.array(), 'color': 'black'} 
+            ellipse_data.append(e_data)
+
+        # xs
+        x_h_line = x_pos + circle_gap * x_y_ratio / 2
+        y_pos = n + 0.5
+        h_line_data = [(x_h_line, 0), (x_h_line, y_pos + 0.5)]  
+        x_data.append(h_line_data)
+        if selected_attrs:
+            x_left = x_pos - r_sector1 * x_y_ratio
+            x_right = x_pos + r_sector1 * x_y_ratio
+            y_bottom = y_pos - r_sector1
+            y_top = y_pos + r_sector1
+            p1_data = [(x_left, y_bottom), (x_right, y_top)]
+            p2_data = [(x_right, y_bottom), (x_left, y_top)]
+            p_data = [p1_data, p2_data]
+            x_data.extend(p_data)
+
     glyph_plot = hv.Polygons(ellipse_data, vdims='color').opts(
         line_width=0,
         color='color',
+        framewise=True,
+    )
+    # print(x_data)
+    x_plot = hv.Path(x_data).opts(
+        color='black',
+        framewise=True,
+    )
+
+    trans_circles = hv.Polygons(hover_data, 
+                                vdims=['Bias Contribution', 
+                                       'Attribute Bias', 
+                                       'Abs Corr(Attr, Contribution)']).opts(
+        fill_alpha=0,
+        line_width=0, 
+        tools=['hover'], 
+        framewise=True,
     )
 
     # Prepare data for transparent rectangles with black strokes
@@ -926,7 +1107,7 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
     x0 = 0  # Starting x-coordinate
     for width in all_ns:
         # Add a rectangle for each group, transparent fill and black stroke
-        transparent_rect_data.append((x0, 0, x0 + width, n, 'black'))
+        transparent_rect_data.append((x0, 0, x0 + width, n, LINE_GREY_COLOR))
         x0 += width
 
     # Convert transparent rectangle data into a DataFrame
@@ -936,37 +1117,49 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
     transparent_rectangles_plot = hv.Rectangles(transparent_rect_df, vdims=['Line_Color']).opts(
         fill_alpha=0,  # Set fill color to transparent
         line_color=hv.dim('Line_Color'),
-        line_width=1,
-        tools=[],
-    )
+        line_width=1, 
+        tools=[], 
+        framewise=True,
+    ) 
     
     # Overlay Transparent Rectangles onto the existing combined plot with rectangles
-    final_combined_plot = (plot * glyph_plot * transparent_rectangles_plot).opts(
-        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-        invert_axes=True,
-        framewise=True,
-        shared_axes=False,
-    ).redim.range(x=(-n_all_nodes / 10 - 5-2, n_all_nodes*1.1), y=(0, n+1))
+    final_combined_plot = (plot * glyph_plot * x_plot * transparent_rectangles_plot * trans_circles)
+    # .opts(
+    #     hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+    #     invert_axes=True,
+    #     framewise=True,
+    #     shared_axes=False,
+    # ).redim.range(x=(-n_all_nodes / 10 - 5-2, n_all_nodes*1.1), y=(0, n+1))
     
     # Return the final combined plot
     # return final_combined_plot
-
     if x:
         if 0 <= x <= n:
             # Draw an arrow pointing downwards at the top of the plot
             # Since the plot is inverted, the top is actually on the right, before inverting
             arrow_y_position = n_all_nodes*1.02  # Adjust this value as needed to place the arrow correctly
-            arrow = hv.Arrow(int(x)+0.5, arrow_y_position, direction='v', arrowstyle='-|>')
+            arrow = hv.Arrow(int(x)+0.5, arrow_y_position, direction='v', arrowstyle='-|>').opts(
+                framewise=True,
+            )
 
             # Overlay the Arrow on the Final Combined Plot
             final_plot_with_arrow = final_combined_plot * arrow
         else:
-            final_plot_with_arrow = final_combined_plot * hv.Arrow(np.nan, np.nan)
+            final_plot_with_arrow = final_combined_plot
     else:
         final_plot_with_arrow = final_combined_plot
 
     # Return the final plot with the arrow
-    return final_plot_with_arrow
+    return final_plot_with_arrow.opts(
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+        invert_axes=True,
+        framewise=True,
+        shared_axes=False,
+        xlim=(xmin, xmax),
+        ylim=(ymin, ymax) 
+    # ).redim.range(x=(-n_all_nodes / 10 - 5-2, n_all_nodes*1.1), y=(0, n+1))
+    )
+    # .redim.range(x=(xmin, xmax), y=(ymin, ymax)) 
 
 
 # def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nodes, individual_bias_metrics, x, y):
@@ -1004,7 +1197,7 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
 #         opts.Rectangles(
 #                         # tools=['tap'], active_tools=['tap'],
 #                         color=hv.dim('Color').categorize(
-#                             {False: '#87CEEB', True: '#FF6347'}),
+#                             {False: COLOR_FALSE, True: COLOR_TRUE}),
 #                         # yformatter='%.0f',  # Show integers on y-axis
 #                         # yticks=list(range(n)),  # Set y-axis ticks
 #                         # yaxis=None,  # Hide y-axis
@@ -1025,7 +1218,7 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
 #     for i in range(n):
 #         # # Determine color based on row index relative to k
 #         # color = 'green' if i < k else 'red'
-#         color = '#FF6347' if overall_bias_indicators[i] else '#87CEEB'
+#         color = COLOR_TRUE if overall_bias_indicators[i] else COLOR_FALSE
 #         # Calculate y-coordinate for the center of the circle (midpoint of the rectangle's height)
 #         y_center = i + 0.5
 #         # Append circle information (x-coordinate, y-coordinate, and color)
@@ -1153,17 +1346,19 @@ def draw_attribute_view_correlation_violin(feat, individual_bias_metrics, select
     violin_plot = hv.Violin(data, 'feat', 'metric').opts(
         xlabel='Atribute', ylabel='Bias Contribution').opts(
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-        violin_fill_color='#717171',
+        violin_fill_color=FILL_GREY_COLOR,
         framewise=True,
-    )
+        violin_line_color=None
+    ) 
 
-    return violin_plot
+    return violin_plot 
 
 
 def draw_attribute_view_correlation_hex(feat, individual_bias_metrics, selected_nodes, gridsize=30):
     x_data = feat[selected_nodes]
     y_data = individual_bias_metrics[selected_nodes]
     return hv.HexTiles((x_data, y_data)).opts(opts.HexTiles(
+        framewise=True, 
         gridsize=gridsize, 
         tools=['hover'], 
         colorbar=True)).opts(
@@ -1171,7 +1366,8 @@ def draw_attribute_view_correlation_hex(feat, individual_bias_metrics, selected_
         shared_axes=False,
         xlabel='Attribute',
         ylabel='Bias Contribution',
-        xrotation=90
+        xrotation=90,
+        cmap=CONTINUOUS_CMAP
     )
 
 
@@ -1221,7 +1417,7 @@ def draw_attribute_view_correlation_hex(feat, individual_bias_metrics, selected_
 #         hv.opts.Bars(fill_alpha=0, line_dash='dashed', line_width=1.5, stacked=False, invert_axes=True)
 #     )
 #     value_bars = hv.Bars(df, ['Metric Type', 'Measurement Method'], 'Value').opts(
-#         hv.opts.Bars(fill_color='#717171', stacked=False, invert_axes=True, tools=['hover', 'tap'])
+#         hv.opts.Bars(fill_color=FILL_GREY_COLOR, stacked=False, invert_axes=True, tools=['hover', 'tap'])
 #     )
 
 #     composite_chart = (range_bars * value_bars).opts(
@@ -1278,7 +1474,7 @@ def draw_fairness_metric_view_value_bar(labels, groups, selected_nodes, predicti
     custom_hover = HoverTool(tooltips=[('Value', '@{Value}')])
 
     value_bars = hv.Bars(df, ['Metric Type', 'Measurement Method'], 'Value').opts(
-        hv.opts.Bars(fill_color='#717171', stacked=False, invert_axes=True, tools=[custom_hover, 'tap']) 
+        hv.opts.Bars(fill_color=FILL_GREY_COLOR, stacked=False, invert_axes=True, tools=[custom_hover, 'tap']) 
     ).opts(
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
         xlabel='Fairness Metric',
@@ -1286,8 +1482,9 @@ def draw_fairness_metric_view_value_bar(labels, groups, selected_nodes, predicti
         ylim=(0, 1.05),
         xticks=[0, 0.2, 0.4, 0.6, 0.8, 1.0],
         shared_axes=False,
-        show_legend=False
-    )
+        show_legend=False,
+        line_color=None
+    ) 
 
     return value_bars
 
@@ -1326,7 +1523,7 @@ def draw_fairness_metric_view_range_bar():
         ylim=(0, 1.05),
         xticks=[0, 0.2, 0.4, 0.6, 0.8, 1.0],
         shared_axes=False,
-        show_legend=False
+        show_legend=False,
     )
 
     return range_bars
