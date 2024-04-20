@@ -30,6 +30,9 @@ import panel as pn
 import copy
 from bokeh.models import HelpButton, Tooltip
 import random
+import sys
+
+sys.setrecursionlimit(1000000)
 
 hv.extension('bokeh')
 pn.extension()
@@ -155,12 +158,13 @@ class EUG:
         self.adj = adj
         self.adj_mul_indices = []
         self.adj0, self.adj1, self.adj0_scipy, self.adj1_scipy = util.modify_sparse_tensor_scipy(adj)
+        print(self.adj0)
         self.feat = feat
         self.n_feat = feat.shape[-1]
         self.sens = sens
         self.groups_stream = Groups(groups=self.sens[0])
         self.sens_names = sens_names
-        self.max_hop = max_hop
+        self.max_hop = max_hop 
         self.train_mask = masks[0]
         self.val_mask = masks[1]
         self.test_mask = masks[2]
@@ -269,9 +273,12 @@ class EUG:
         # '#C9F1AF',
         # '#FFE3B9', 
         # '#A1DDBF']
-        self.colors = ['#F1B8B8', '#F1CEB8', '#F1DAB8', '#F1E2B8', '#F1E9B8', '#F1F1B8', 
-                       '#D6E4AE', '#B5D4A1', '#81A995', '#738E96', '#7F89A1', '#8984A7', 
-                       '#907FA3', '#9A799E', '#CB9AB0',]
+        # self.colors = ['#F1B8B8', '#F1CEB8', '#F1DAB8', '#F1E2B8', '#F1E9B8', '#F1F1B8', 
+        #                '#D6E4AE', '#B5D4A1', '#81A995', '#738E96', '#7F89A1', '#8984A7', 
+        #                '#907FA3', '#9A799E', '#CB9AB0',]
+        self.colors = ['#F1B8B8', '#81A995', '#F1E9B8', '#907FA3', '#F1DAB8', 
+                       '#7F89A1', '#D6E4AE', '#CB9AB0', '#738E96', '#F1E2B8', 
+                       '#9A799E', '#B5D4A1', '#F1CEB8', '#8984A7', '#F1F1B8', ]
         
         # self.selectable_metrics = []
         # for layer in self.layers:
@@ -634,7 +641,7 @@ class EUG:
         # feat_train = self.feat[self.train_mask].cpu().numpy()
         feat_np = self.feat.cpu().numpy()
         # self.columns_categorical = util.check_unique_values(feat_train)
-        self.columns_categorical = util.check_unique_values(feat_np)
+        # self.columns_categorical = util.check_unique_values(feat_np)
         # # pearson_r_results = [stats.pearsonr(row, estimated_pdd) for row in feat_train.T[~self.columns_categorical]]
         # pearson_r_results = [stats.pearsonr(row, self.individual_bias_metrics) 
         #                      for row in feat_np.T[~self.columns_categorical]]
@@ -873,6 +880,8 @@ class EUG:
         #                                          streams=[self.selected_nodes_stream, self.groups_stream])
 
         # overview
+        feat_np = self.feat.cpu().numpy()
+        self.columns_categorical = util.check_unique_values(feat_np)
         contributions = util.calc_contributions(
             model=self.model,
             g=self.g,
@@ -896,7 +905,7 @@ class EUG:
                                                         streams=[self.selected_nodes_stream, 
                                                                  self.groups_stream,
                                                                  self.attribute_view_overview_tap,
-                                                                 self.individual_bias_metrics_stream,
+                                                                #  self.individual_bias_metrics_stream,
                                                                  self.contributions_stream,
                                                                  self.selected_attrs_ls_stream,])
         # watch the tap
@@ -948,7 +957,8 @@ class EUG:
         # deep copy self.extract_communities_args, which is a tuple
         self.node_communities = community.extract_communities(community.Tree(), 
                                                               *loaded_extract_communities_args, 
-                                                              self.extract_communities_args[3], 
+                                                            #   self.adj0, 
+                                                            self.extract_communities_args[3],
                                                               0.5)
         print('communities is fine')
 
@@ -1112,10 +1122,10 @@ class EUG:
                     self.sens_name_selector, 
                     sens_name_confirm_control_panel_button,
                 ),
-                pn.Row(
-                    self.data_selector,
-                    data_select_control_panel_button,
-                ),
+                # pn.Row(
+                #     self.data_selector,
+                #     data_select_control_panel_button,
+                # ),
                 self.record_button,
                 pn.layout.Divider(), 
                 '### Embedding View Settings',
@@ -1217,7 +1227,7 @@ class EUG:
         if node_sample_size < self.n_nodes:
             sampled_alpha = np.zeros(self.n_nodes)
             sample_idx = np.random.choice(np.arange(self.n_nodes), node_sample_size, replace=False)
-            self.sampled_idx_stream.event(sampled_idx=sample_idx)
+            # self.sampled_idx_stream.event(sampled_idx=sample_idx)
             sampled_alpha[sample_idx] = 1
             self.sampled_alpha = sampled_alpha
         else:
@@ -1537,10 +1547,17 @@ class EUG:
                         # check if (x, y) is in the deleting area
                         if x_left <= x <= x_right and y_bottom <= y <= y_top:
                             selected_attrs_ls.pop(i)
-                            self.selected_attrs_ls_stream.event(selected_attrs_ls=selected_attrs_ls)
+                            if selected_attrs_ls:
+                                self.selected_attrs_ls_stream.event(selected_attrs_ls=selected_attrs_ls)
+                            else: 
+                                self.selected_attrs_ls_stream.event(selected_attrs_ls=[[]])
+                            # self.selected_attrs_ls_stream.event(selected_attrs_ls=selected_attrs_ls)
                             contributions_selected_attrs = self.contributions_stream.contributions_selected_attrs.copy() 
                             tmp_contributions_selected_attrs = np.delete(contributions_selected_attrs, i)
-                            self.contributions_stream.event(contributions_selected_attrs=tmp_contributions_selected_attrs)
+                            if tmp_contributions_selected_attrs.size == 0:
+                                self.contributions_stream.event(contributions_selected_attrs=np.array([0.]))
+                            else:
+                                self.contributions_stream.event(contributions_selected_attrs=tmp_contributions_selected_attrs)
                             break
         self.previous_attribute_view_overview_tap_x, self.previous_attribute_view_overview_tap_y = x, y
 
@@ -1803,7 +1820,8 @@ class EUG:
 
         # Use pickle to serialize self.extract_communities_args to the file
         with open(file_path, 'wb') as file:
-            pickle.dump(self.extract_communities_args[1: 3], file) 
+            # pickle.dump(self.extract_communities_args, file) 
+            pickle.dump(self.extract_communities_args[1: 3], file)
 
     def _load_extract_communities_args(self):
         # Determine the directory of the current file
@@ -1817,13 +1835,13 @@ class EUG:
         return ret
 
     def _new_selection_button_callback(self, event):
+        contributions_selected_attrs = self.contributions_stream.contributions_selected_attrs.copy()
         # create a new list of selected attributes
         selected_attrs_ls = self.selected_attrs_ls_stream.selected_attrs_ls.copy()
         selected_attrs_ls.append([])
         self.selected_attrs_ls_stream.event(selected_attrs_ls=selected_attrs_ls)
         # append a 0. to self.contributions_stream.contributions_selected_attrs
-        contributions_selected_attrs = self.contributions_stream.contributions_selected_attrs.copy()
-        contributions_selected_attrs_tmp = np.append(contributions_selected_attrs, 0.)
+        contributions_selected_attrs_tmp = np.append(contributions_selected_attrs, 0.) 
         self.contributions_stream.event(contributions_selected_attrs=contributions_selected_attrs_tmp)
 
     def _record_button_callback(self, event):

@@ -52,6 +52,19 @@ class Tree:
                 lca_node = self.findLCA_Node(src_node, dst_node)
             if lca_node:
                 lca_node.num_edges += 1
+            
+    # def count_vertices_and_edges(self, adj, nodes_list):
+    #     indices = adj.coalesce().indices()
+    #     # for edge in edges_list:
+    #     for i in range(indices.size(1)):
+    #         edge = indices[:, i].tolist()
+    #         lca_node = None
+    #         src_node = nodes_list.get(edge[0])
+    #         dst_node = nodes_list.get(edge[1])
+    #         if src_node and dst_node:
+    #             lca_node = self.findLCA_Node(src_node, dst_node)
+    #         if lca_node:
+    #             lca_node.num_edges += 1
 
     def count_vertices_and_edges_wrap(self, root):
         if root.left and root.right:
@@ -121,52 +134,94 @@ def create_networkx_graph_from_sparse_tensor(sparse_tensor):
 
 
 # Function to process the graph file and build dendogram
+# def process_graph(adj):
+#     G = create_networkx_graph_from_sparse_tensor(adj)
+
+#     A = nx.adjacency_matrix(G)
+#     adj_matrix = A.todense()
+#     print(adj_matrix)
+
+#     M = np.zeros(adj_matrix.shape)
+#     row, col = adj_matrix.shape
+
+#     # Building similarity function matrix (Cosine Function matrix of all Column Vectors)
+#     # for x in tqdm(range(row)):
+#     for x in range(row):
+#         for y in range(x, col):
+#             if np.count_nonzero(adj_matrix[:, x]) and np.count_nonzero(adj_matrix[:, y]):
+#                 M[x, y] = 1 - distance.cosine(adj_matrix[:, x], adj_matrix[:, y])
+
+#     tuples = []
+# 	#On basis of zero graph
+#     # min_value = 1 if min(vertices)>0 else 0
+#     min_value = 0
+# 	#Considering only non zero values
+#     # for (x,y), value in tqdm(np.ndenumerate(M)):
+#     for (x, y), value in np.ndenumerate(M):
+#         if value!=0 and x!=y:
+#             tuples.append(((x+min_value,y+min_value),value))
+
+#     C = sorted(tuples, key=lambda x: x[1])
+# 	# #print "done"
+#     # t = np.count_nonzero(adj_matrix)
+# 	# #print(t)
+#     # C = C[-t:]
+
+# 	#print(C)
+# 	#print 'C done'
+
+#     ln = len(C)
+#     ln = ln-1
+#     print(ln)
+
+#     nodes =dict()
+#     root_nodes = set()
+#     tree = Tree()
+
+#     # for index in tqdm(range(ln, -1, -1)):
+#     for index in range(ln, -1, -1):
+#         vertices, value = C[index]
+#         i,j = vertices
+#         if nodes.__contains__(i) is False:
+#             a = Node(i)
+#             MakeSet(a)
+#             nodes[i] = a
+#         if nodes.__contains__(j) is False:
+#             a = Node(j)
+#             MakeSet(a)
+#             nodes[j]=a
+		
+#         i = nodes[i]
+#         j = nodes[j]
+#         ri = SetFind(i)
+#         rj = SetFind(j)
+#         if ri.vertices != rj.vertices:
+#             temp_root = SetUnion(ri,rj)
+#             root_nodes.add(temp_root)
+
+# 	#print tree.root.vertices, len(tree.root.vertices)
+#     root_nodes = list(filter( lambda entry: entry.parent==None, list(root_nodes)))
+
+#     return tree, root_nodes, nodes, G
+
+
 def process_graph(adj):
     G = create_networkx_graph_from_sparse_tensor(adj)
+    print(len(G.edges()))
+    normed_adj = normalize_sparse_tensor_by_row(adj)
+    M = extract_upper_triangular(torch.sparse.mm(normed_adj, normed_adj.T)).coalesce() 
+    nnz = adj._nnz() 
+    print(nnz)
 
-    A = nx.adjacency_matrix(G)
-    adj_matrix = A.todense()
-    print(adj_matrix)
+    # top_values, top_indices = find_top_k_sparse(M, nnz)
+    top_indices = find_top_k_sparse(M, nnz).T 
 
-    M = np.zeros(adj_matrix.shape)
-    row, col = adj_matrix.shape
-
-    # Building similarity function matrix (Cosine Function matrix of all Column Vectors)
-    # for x in tqdm(range(row)):
-    for x in range(row):
-        for y in range(x, col):
-            if np.count_nonzero(adj_matrix[:, x]) and np.count_nonzero(adj_matrix[:, y]):
-                M[x, y] = 1 - distance.cosine(adj_matrix[:, x], adj_matrix[:, y])
-
-    tuples = []
-	#On basis of zero graph
-    # min_value = 1 if min(vertices)>0 else 0
-    min_value = 0
-	#Considering only non zero values
-    # for (x,y), value in tqdm(np.ndenumerate(M)):
-    for (x, y), value in np.ndenumerate(M):
-        if value!=0 and x!=y:
-            tuples.append(((x+min_value,y+min_value),value))
-
-    C = sorted(tuples, key=lambda x: x[1])
-	# #print "done"
-    # t = np.count_nonzero(adj_matrix)
-	# #print(t)
-    # C = C[-t:]
-
-	#print(C)
-	#print 'C done'
-
-    ln = len(C)
-    ln = ln-1
-
-    nodes =dict()
+    nodes =dict() 
     root_nodes = set()
-    tree = Tree()
 
-    # for index in tqdm(range(ln, -1, -1)):
-    for index in range(ln, -1, -1):
-        vertices, value = C[index]
+    # for i, value in enumerate(top_values):
+    for vertices in tqdm(top_indices):
+        # vertices = top_indices[:, i]
         i,j = vertices
         if nodes.__contains__(i) is False:
             a = Node(i)
@@ -188,7 +243,7 @@ def process_graph(adj):
 	#print tree.root.vertices, len(tree.root.vertices)
     root_nodes = list(filter( lambda entry: entry.parent==None, list(root_nodes)))
 
-    return tree, root_nodes, nodes, G
+    return Tree(), root_nodes, nodes, G
 
 
 def extract_communities(tree, root_nodes, nodes, G, min_threshold):
@@ -207,6 +262,26 @@ def extract_communities(tree, root_nodes, nodes, G, min_threshold):
         tree.extract_sub_graph(tree.root, min_threshold)
 
     return tree.communities
+
+
+# def extract_communities(tree, root_nodes, nodes, adj, min_threshold):
+#     G = create_networkx_graph_from_sparse_tensor(adj)
+#     tree.communities = []
+#     # for temp_roots in tqdm(root_nodes):
+#     for temp_roots in tqdm(root_nodes):
+
+#         tree.root = temp_roots
+# 		#Counting number of vertices and Edges
+#         # tree.count_vertices_and_edges(adj,nodes)
+#         tree.count_vertices_and_edges(G.edges(),nodes)
+# 		#Summing up number of edges of children to parent
+#         tree.count_vertices_and_edges_wrap(tree.root)
+# 		#Computing density of Tree Nodes
+#         tree.compute_density(tree.root)
+# 		#Filtering Nodes as Per Density Threshold
+#         tree.extract_sub_graph(tree.root, min_threshold)
+
+#     return tree.communities
 
 
 def create_community_slices(sparse_adj_matrix, communities):
@@ -228,3 +303,59 @@ def create_community_slices(sparse_adj_matrix, communities):
         community_adj_matrices.append(community_submatrix)
 
     return community_adj_matrices
+
+
+def find_top_k_sparse(sparse_tensor, k):
+    # Retrieve the values and the indices from the sparse tensor
+    values = sparse_tensor.values()
+    indices = sparse_tensor.indices()
+
+    # Find the top k values and their indices
+    top_values, top_positions = torch.topk(values, k, largest=True, sorted=True)
+
+    # Extract the corresponding indices for the top values
+    top_indices = indices[:, top_positions]
+
+    # return top_values.flip(0).cpu().numpy(), top_indices.flip(1).cpu().numpy()
+    return top_indices.cpu().numpy()   
+
+
+def extract_upper_triangular(sparse_tensor):
+    # Access indices and values of the sparse tensor
+    indices = sparse_tensor.indices()
+    values = sparse_tensor.values()
+    print(values)   
+    
+    # Find elements where the column index is greater than or equal to the row index
+    mask = indices[1] >= indices[0]
+    
+    # Apply mask to filter indices and values
+    filtered_indices = indices[:, mask]
+    filtered_values = values[mask]
+    
+    # Create a new sparse tensor with the filtered indices and values
+    upper_triangular_tensor = torch.sparse_coo_tensor(filtered_indices, filtered_values, sparse_tensor.shape, device=sparse_tensor.device)
+    
+    return upper_triangular_tensor
+
+
+def normalize_sparse_tensor_by_row(sparse_tensor):
+    # Calculate row sums
+    row_sums = torch.sparse.sum(sparse_tensor, dim=1)
+
+    # Convert row sums to dense tensor and take reciprocals (avoiding division by zero)
+    row_sums_dense = torch.sqrt(row_sums.to_dense())
+    row_reciprocals = 1.0 / row_sums_dense
+    row_reciprocals[torch.isinf(row_reciprocals)] = 0  # Set infinities to zero (where row sums were zero)
+
+    # Create indices for the diagonal matrix
+    indices = torch.arange(sparse_tensor.shape[0], device=sparse_tensor.device)
+    diag_indices = torch.stack([indices, indices])
+
+    # Create a diagonal matrix in sparse format
+    diag_matrix = torch.sparse_coo_tensor(diag_indices, row_reciprocals, sparse_tensor.shape, device=sparse_tensor.device)
+
+    # Normalize the sparse matrix by row via matrix multiplication
+    normalized_sparse_tensor = torch.sparse.mm(diag_matrix, sparse_tensor)
+
+    return normalized_sparse_tensor

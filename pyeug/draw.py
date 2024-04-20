@@ -882,8 +882,289 @@ def draw_attribute_view_bar(variable_data, feat_name, groups, selected_nodes):
     return bars
 
 
+# def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nodes, 
+#                                  individual_bias_metrics, x, y, contributions, 
+#                                  contributions_selected_attrs,
+#                                  hw_ratio,
+#                                  selected_attrs_ls):
+#     # print(contributions)
+#     n_all_nodes = len(feat)
+#     n_selected_attrs = len(selected_attrs_ls)
+#     # print(selected_attrs_ls)
+#     # print(groups)
+#     groups = pd.Series(groups, name="Group")
+#     bias_indicators, overall_bias_indicators, ns, all_ns, all_unique_groups = util.analyze_bias(feat, groups, columns_categorical, selected_nodes)
+#     # # k being the sum of overall_bias_indicator
+#     # k = len(overall_bias_indicators) - overall_bias_indicators.sum()
+#     # print(ns)
+#     # ns being the number of each unique value in 
+#     m = len(ns)
+#     # print(ns) 
+#     n = len(overall_bias_indicators)
+
+#     circle_gap = 2
+
+#     ymax = n+1.5
+#     ymin = 0
+#     xmax = n_all_nodes * 1.1 
+#     # xmin = -n_all_nodes / 10 - 7 - circle_gap * n_selected_attrs * (xmax / (ymax - ymin)) / hw_ratio
+#     # solve: xmin = -circle_gap * (1 + n_selected_attrs) * ((xmax - xmin) / (ymax - ymin)) / hw_ratio
+#     xmin = (circle_gap * xmax * (n_selected_attrs + 1)) / (circle_gap * n_selected_attrs + circle_gap - hw_ratio * ymax + hw_ratio * ymin)
+
+#     # Prepare the data for Rectangles
+#     rect_data = []
+#     x0 = 0
+#     for j in range(m):
+#         # print(x0)
+#         width = ns[j]
+#         column = bias_indicators[:, j]
+#         # print([(x0, i, x0 + width, i+1, column[i]) for i in range(n)][-4])
+#         rect_data.extend([(x0, i, x0 + width, i+1, column[i], i) for i in range(n)])
+#         x0 += all_ns[j]
+
+#     rect_data = pd.DataFrame(rect_data, columns=['x0', 'y0', 'x1', 'y1', 'Color', 'ID'])        
+
+#     # Calculate the center of each column
+#     column_centers = [sum(all_ns[:i+1]) - all_ns[i]/2 for i in range(m)]
+#     # create yticks using column_centers and all_unique_groups
+#     yticks = [(c, all_unique_groups[i]) for i, c in enumerate(column_centers)]
+#     custom_hover = HoverTool(tooltips=[('Attr.:', '@{ID}')])
+#     # Create the Rectangles plot
+#     plot = hv.Rectangles(rect_data, vdims=['Color', 'ID']).opts(
+#         opts.Rectangles(
+#                         # tools=['tap'], active_tools=['tap'],
+#                         color=hv.dim('Color').categorize(
+#                             {False: COLOR_FALSE, True: COLOR_TRUE}
+#                         ),
+#                         # yformatter='%.0f',  # Show integers on y-axis
+#                         # yticks=list(range(n)),  # Set y-axis ticks 
+#                         # yaxis=None,  # Hide y-axis
+#                         xaxis=None,  # Hide x-axis
+#                         xlabel='Sensitive Subgroup',  # X-axis label
+#                         yticks=yticks,
+#                         line_width=0.1,
+#                         framewise=True,
+#                         # alpha=0.3,
+#                         # xrotation=90
+#                         tools=[custom_hover]
+#                         ))  # Column tick labels
+    
+#     # glyph plot
+#     r_sector1 = 0.45
+#     r_ellipse1 = r_sector1 * 1.5
+#     r_ellipse2 = r_sector1
+#     r_sector2 = r_sector1 / 2 
+#     r_trans_circle = r_sector1 * 2
+#     r_selected_attr_circle = r_sector1 * 1.5
+#     r_selected_attr_sector = r_sector1
+
+#     # calculate the proportion of x range / y range
+#     x_y_ratio = (xmax - xmin) / (ymax - ymin) / hw_ratio
+
+#     # circle_x = -n_all_nodes / 20 - 2
+#     circle_x = -circle_gap / 2 * x_y_ratio
+
+#     # # Calculate correlations and p-values
+#     feat_np = feat.to_numpy()
+#     # Placeholder lists for correlations and p-values
+#     correlations = []
+#     p_values = []
+
+#     # Iterate over all features in feat_np using their index to maintain order
+#     for index, is_categorical in enumerate(columns_categorical):
+#         # Extract the feature column
+#         feature_column = feat_np[:, index]
+        
+#         # Check if the feature is continuous or categorical and calculate accordingly
+#         if is_categorical:
+#             # Point-Biserial correlation for categorical features
+#             correlation, p_val = stats.pointbiserialr(feature_column, individual_bias_metrics)
+#         else:
+#             # Pearson correlation for continuous features
+#             correlation, p_val = stats.pearsonr(feature_column, individual_bias_metrics)
+        
+#         # Append the results to the lists
+#         correlations.append(abs(correlation))
+#         p_values.append(p_val)
+
+#     # contributions is a 1d np array, get the max absolute value
+#     contributions_selected_attrs = np.array(contributions_selected_attrs)
+#     max_contrib = np.max(np.concatenate([np.abs(contributions), np.abs(contributions_selected_attrs)]))
+#     # Normalize contributions to [-1, 1] 
+#     normalized_contributions = contributions / max_contrib
+#     sector_pointes1_angles = normalized_contributions * 180
+#     normalized_contributions_selected_attrs = contributions_selected_attrs / max_contrib
+#     selected_attr_sector_angles = normalized_contributions_selected_attrs * 180
+ 
+#     n = bias_indicators.shape[0]
+
+#     ellipse_data = []
+#     hover_data = []
+#     for i in range(n):
+#         # sector_pointes1: contributions
+#         end_angle = sector_pointes1_angles[i]
+#         sector_points1 = create_sector(center=(circle_x, i + 0.5),
+#                                         radius=r_sector1,
+#                                         x_y_ratio = x_y_ratio,
+#                                         start_angle=90,
+#                                         end_angle=90-end_angle,)
+#         sector_data1 = {('x', 'y'): sector_points1, 'color': FILL_GREY_COLOR}
+#         ellipse_data.append(sector_data1)
+
+#         # ellipse1: overall bias indicators
+#         # # Determine color based on row index relative to k
+#         # color = 'green' if i < k else 'red'
+#         color = COLOR_TRUE if overall_bias_indicators[i] else COLOR_FALSE
+#         e = hv.Ellipse(circle_x, i + 0.5, (x_y_ratio * r_ellipse1, r_ellipse1))
+#         e_data = {('x', 'y'): e.array(), 'color': color}
+#         ellipse_data.append(e_data)
+
+#         # ellipse2: just white
+#         e = hv.Ellipse(circle_x, i + 0.5, (x_y_ratio * r_ellipse2, r_ellipse2))
+#         e_data = {('x', 'y'): e.array(), 'color': 'white'}
+#         ellipse_data.append(e_data)
+
+#         # sector_points2: angle for correlations, color for p-values
+#         p_val = p_values[i]
+#         # color = COLOR_TRUE if p_val < 0.05 else COLOR_FALSE
+#         color = FILL_GREY_COLOR
+#         correlation = correlations[i]
+#         end_angle = 360 * correlation
+#         sector_points2 = create_sector(center=(circle_x, i + 0.5), 
+#                                        radius=r_sector2,
+#                                        x_y_ratio = x_y_ratio,
+#                                        start_angle=90, 
+#                                        end_angle=90-end_angle,)
+#         sector_data2 = {('x', 'y'): sector_points2, 'color': color}
+#         ellipse_data.append(sector_data2)
+
+#         # transparent circle for hovering
+#         trans_circle = hv.Ellipse(circle_x, i + 0.5, (x_y_ratio * r_trans_circle, r_trans_circle))
+#         trans_circle_data = {('x', 'y'): trans_circle.array(),
+#                              'Bias Contribution': contributions[i],
+#                              'Attribute Bias': 'true' if overall_bias_indicators[i] else 'false',
+#                              'Abs Corr(Attr, Contribution)': correlations[i]}
+#         hover_data.append(trans_circle_data)
+
+#     x_data = []
+#     for i, selected_attrs in enumerate(selected_attrs_ls):
+#         # attr selection circles
+#         x_pos = circle_x - circle_gap * x_y_ratio * (i + 1)
+#         for selected_attr in selected_attrs:
+#             y_pos = selected_attr + 0.5
+#             # attr contribution sector
+#             end_angle = selected_attr_sector_angles[i]
+#             selected_attr_sector = create_sector(center=(x_pos, y_pos),
+#                                             radius=r_selected_attr_sector,
+#                                             x_y_ratio = x_y_ratio,
+#                                             start_angle=90,
+#                                             end_angle=90-end_angle,)
+#             sector_data1 = {('x', 'y'): selected_attr_sector, 'color': FILL_GREY_COLOR}
+#             ellipse_data.append(sector_data1)
+#             # inner circle
+#             e = hv.Ellipse(x_pos, y_pos, (x_y_ratio * r_selected_attr_circle, r_selected_attr_circle))
+#             e_data = {('x', 'y'): e.array(), 'color': 'black'} 
+#             ellipse_data.append(e_data)
+
+#         # xs
+#         x_h_line = x_pos + circle_gap * x_y_ratio / 2
+#         y_pos = n + 0.5
+#         h_line_data = [(x_h_line, 0), (x_h_line, y_pos + 0.5)]  
+#         x_data.append(h_line_data)
+#         if selected_attrs:
+#             x_left = x_pos - r_sector1 * x_y_ratio
+#             x_right = x_pos + r_sector1 * x_y_ratio
+#             y_bottom = y_pos - r_sector1
+#             y_top = y_pos + r_sector1
+#             p1_data = [(x_left, y_bottom), (x_right, y_top)]
+#             p2_data = [(x_right, y_bottom), (x_left, y_top)]
+#             p_data = [p1_data, p2_data]
+#             x_data.extend(p_data)
+
+#     glyph_plot = hv.Polygons(ellipse_data, vdims='color').opts(
+#         line_width=0,
+#         color='color',
+#         framewise=True,
+#     )
+#     # print(x_data)
+#     x_plot = hv.Path(x_data).opts(
+#         color='black',
+#         framewise=True,
+#     )
+
+#     trans_circles = hv.Polygons(hover_data, 
+#                                 vdims=['Bias Contribution', 
+#                                        'Attribute Bias', 
+#                                        'Abs Corr(Attr, Contribution)']).opts(
+#         fill_alpha=0,
+#         line_width=0, 
+#         tools=['hover'], 
+#         framewise=True,
+#     )
+
+#     # Prepare data for transparent rectangles with black strokes
+#     transparent_rect_data = []
+#     x0 = 0  # Starting x-coordinate
+#     for width in all_ns:
+#         # Add a rectangle for each group, transparent fill and black stroke
+#         transparent_rect_data.append((x0, 0, x0 + width, n, LINE_GREY_COLOR))
+#         x0 += width
+
+#     # Convert transparent rectangle data into a DataFrame
+#     transparent_rect_df = pd.DataFrame(transparent_rect_data, columns=['x0', 'y0', 'x1', 'y1', 'Line_Color'])
+
+#     # Create Transparent Rectangles plot
+#     transparent_rectangles_plot = hv.Rectangles(transparent_rect_df, vdims=['Line_Color']).opts(
+#         fill_alpha=0,  # Set fill color to transparent
+#         line_color=hv.dim('Line_Color'),
+#         line_width=1, 
+#         tools=[], 
+#         framewise=True,
+#     ) 
+    
+#     # Overlay Transparent Rectangles onto the existing combined plot with rectangles
+#     final_combined_plot = (plot * glyph_plot * x_plot * transparent_rectangles_plot * trans_circles)
+#     # .opts(
+#     #     hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+#     #     invert_axes=True,
+#     #     framewise=True,
+#     #     shared_axes=False,
+#     # ).redim.range(x=(-n_all_nodes / 10 - 5-2, n_all_nodes*1.1), y=(0, n+1))
+    
+#     # Return the final combined plot
+#     # return final_combined_plot
+#     if x:
+#         if 0 <= x <= n:
+#             # Draw an arrow pointing downwards at the top of the plot
+#             # Since the plot is inverted, the top is actually on the right, before inverting
+#             arrow_y_position = n_all_nodes*1.02  # Adjust this value as needed to place the arrow correctly
+#             arrow = hv.Arrow(int(x)+0.5, arrow_y_position, direction='v', arrowstyle='-|>').opts(
+#                 framewise=True,
+#             )
+
+#             # Overlay the Arrow on the Final Combined Plot
+#             final_plot_with_arrow = final_combined_plot * arrow
+#         else:
+#             final_plot_with_arrow = final_combined_plot
+#     else:
+#         final_plot_with_arrow = final_combined_plot
+
+#     # Return the final plot with the arrow
+#     return final_plot_with_arrow.opts(
+#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+#         invert_axes=True,
+#         framewise=True,
+#         shared_axes=False,
+#         xlim=(xmin, xmax),
+#         ylim=(ymin, ymax) 
+#     # ).redim.range(x=(-n_all_nodes / 10 - 5-2, n_all_nodes*1.1), y=(0, n+1))
+#     )
+#     # .redim.range(x=(xmin, xmax), y=(ymin, ymax)) 
+
+
 def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nodes, 
-                                 individual_bias_metrics, x, y, contributions, 
+                                #  individual_bias_metrics, 
+                                 x, y, contributions, 
                                  contributions_selected_attrs,
                                  hw_ratio,
                                  selected_attrs_ls):
@@ -966,28 +1247,9 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
 
     # # Calculate correlations and p-values
     feat_np = feat.to_numpy()
-    # Placeholder lists for correlations and p-values
-    correlations = []
-    p_values = []
-
-    # Iterate over all features in feat_np using their index to maintain order
-    for index, is_categorical in enumerate(columns_categorical):
-        # Extract the feature column
-        feature_column = feat_np[:, index]
-        
-        # Check if the feature is continuous or categorical and calculate accordingly
-        if is_categorical:
-            # Point-Biserial correlation for categorical features
-            correlation, p_val = stats.pointbiserialr(feature_column, individual_bias_metrics)
-        else:
-            # Pearson correlation for continuous features
-            correlation, p_val = stats.pearsonr(feature_column, individual_bias_metrics)
-        
-        # Append the results to the lists
-        correlations.append(abs(correlation))
-        p_values.append(p_val)
 
     # contributions is a 1d np array, get the max absolute value
+    print(contributions_selected_attrs)
     contributions_selected_attrs = np.array(contributions_selected_attrs)
     max_contrib = np.max(np.concatenate([np.abs(contributions), np.abs(contributions_selected_attrs)]))
     # Normalize contributions to [-1, 1] 
@@ -1024,26 +1286,12 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
         e_data = {('x', 'y'): e.array(), 'color': 'white'}
         ellipse_data.append(e_data)
 
-        # sector_points2: angle for correlations, color for p-values
-        p_val = p_values[i]
-        # color = COLOR_TRUE if p_val < 0.05 else COLOR_FALSE
-        color = FILL_GREY_COLOR
-        correlation = correlations[i]
-        end_angle = 360 * correlation
-        sector_points2 = create_sector(center=(circle_x, i + 0.5), 
-                                       radius=r_sector2,
-                                       x_y_ratio = x_y_ratio,
-                                       start_angle=90, 
-                                       end_angle=90-end_angle,)
-        sector_data2 = {('x', 'y'): sector_points2, 'color': color}
-        ellipse_data.append(sector_data2)
-
         # transparent circle for hovering
         trans_circle = hv.Ellipse(circle_x, i + 0.5, (x_y_ratio * r_trans_circle, r_trans_circle))
         trans_circle_data = {('x', 'y'): trans_circle.array(),
                              'Bias Contribution': contributions[i],
                              'Attribute Bias': 'true' if overall_bias_indicators[i] else 'false',
-                             'Abs Corr(Attr, Contribution)': correlations[i]}
+                             }
         hover_data.append(trans_circle_data)
 
     x_data = []
@@ -1094,8 +1342,7 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
 
     trans_circles = hv.Polygons(hover_data, 
                                 vdims=['Bias Contribution', 
-                                       'Attribute Bias', 
-                                       'Abs Corr(Attr, Contribution)']).opts(
+                                       'Attribute Bias', ]).opts(
         fill_alpha=0,
         line_width=0, 
         tools=['hover'], 

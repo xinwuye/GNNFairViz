@@ -516,6 +516,7 @@ def delta_std_eod(predictions, labels, groups):
         # Average the two standard deviations for the current label
         mean_std_dev = np.mean([std_dev_correct, std_dev_incorrect])
         eod_metrics.append(mean_std_dev)
+    print('eod_metrics:', eod_metrics)
     # Calculate the mean of the ΔEOD metrics across all labels
     mean_eod = np.mean(eod_metrics)
     return mean_eod

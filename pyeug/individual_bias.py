@@ -6,8 +6,12 @@ import dgl
 from tqdm import tqdm
 import time
 from torch.profiler import profile, record_function, ProfilerActivity
+from . import util
 
-def individual_bias_contribution(adj, features, model, group):
+
+def individual_bias_contribution(adj, features, model, group, 
+                                #  individual_bias_metrics, selected_nodes
+                                 ):
     # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     num_gpus = torch.cuda.device_count()  # Get the number of GPUs available
     current_device = 0
@@ -38,20 +42,21 @@ def individual_bias_contribution(adj, features, model, group):
         total_memory = torch.cuda.get_device_properties(device).total_memory
 
     for i in tqdm(range(size[0])):
-        allocated = torch.cuda.memory_allocated(device)  # Get allocated memory on the current device
-        total_memory = torch.cuda.get_device_properties(device).total_memory
-        memory_usage = allocated / total_memory
-        
-        if memory_usage > 0.9:
-            current_device = (current_device + 1) % num_gpus  # Switch to the next GPU
-            torch.cuda.set_device(current_device)  # Set the new device
-            device = torch.device(f'cuda:{current_device}')  # Update the device
-            model.to(device)  # Move model to the new device
-            features = features.to(device)  # Move features to the new device
-
-        if device.type == 'cuda':
-            # allocated = torch.cuda.memory_allocated()
-            print(allocated / total_memory)
+        if i % 500 == 0:
+            # allocated = torch.cuda.memory_allocated(device)  # Get allocated memory on the current device
+            memory = util.get_gpu_memory_map()[current_device]
+            allocated = memory['memory.used']
+            # total_memory = torch.cuda.get_device_properties(device).total_memory
+            total_memory = memory['memory.total']
+            memory_usage = allocated / total_memory
+            # print(allocated / total_memory)
+            
+            if memory_usage > 0.9:
+                current_device = (current_device + 1) % num_gpus  # Switch to the next GPU
+                torch.cuda.set_device(current_device)  # Set the new device
+                device = torch.device(f'cuda:{current_device}')  # Update the device
+                model.to(device)  # Move model to the new device
+                features = features.to(device)  # Move features to the new device
 
         # start_time = time.time()
         # Remove indices corresponding to the ith row and column
@@ -194,14 +199,14 @@ def jsdist(set1, set2):
     # Estimate PDFs using KDE
     # kde1 = gaussian_kde(set1.T)
     # kde2 = gaussian_kde(set2.T)
-    kde1 = gaussian_kde(sampled_set1t)
-    kde2 = gaussian_kde(sampled_set2t)
+    kde1 = gaussian_kde(set1.T) 
+    kde2 = gaussian_kde(set2.T) 
     # print(f"KDE time: {time.time() - kde_time_start:.6f} seconds")
     # Assuming your KDE objects are kde1 and kde2, created from set1 and set2
 
     # Combine the datasets to cover the support of both distributions
-    # combined_set = np.hstack([set1.T, set2.T])  # Combine along the feature axis
-    combined_set = np.hstack([sampled_set1t, sampled_set2t])  # Combine along the feature axis
+    combined_set = np.hstack([set1.T, set2.T])  # Combine along the feature axis
+    # combined_set = np.hstack([sampled_set1t, sampled_set2t])  # Combine along the feature axis
     # print('shape of combined set:', combined_set.shape)
     # pdf_time_start = time.time()
     # Evaluate the densities of both KDEs on the combined set

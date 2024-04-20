@@ -27,6 +27,7 @@ import base64
 import importlib.util
 import inspect
 from . import individual_bias
+import subprocess
 
 
 torch.manual_seed(42)
@@ -846,3 +847,15 @@ def calc_attr_contributions(model, g, feat, selected_nodes, groups, attr_indices
     contributions = (ori_dist - dist_perturbed) / ori_dist 
     return contributions
 
+
+def get_gpu_memory_map():
+    """Get the current gpu usage."""
+    result = subprocess.check_output(
+        ['nvidia-smi', '--query-gpu=memory.used,memory.total',
+         '--format=csv,nounits,noheader'],
+        encoding='utf-8')
+    # Convert output into a list, remove extra whitespace
+    gpu_memory = [x.strip() for x in result.strip().split('\n')]
+    gpu_memory_map = [dict(zip(['memory.used', 'memory.total'], map(int, x.split(','))))
+                      for x in gpu_memory]
+    return gpu_memory_map
