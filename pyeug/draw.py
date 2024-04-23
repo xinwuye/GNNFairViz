@@ -66,76 +66,6 @@ FILL_GREY_COLOR = '#CCCCCC'
 BAR_COLOR1 = '#DAA9A9' # pink
 BAR_COLOR0 = '#87AF87' # green
 
-# def draw_embedding_view(xy, layer, groups, sampled_alpha, colors, polygons_lst, max_edges_lst, threshold, index):
-#     node_size = 3
-#     current_xy = xy[layer]
-#     x = current_xy[:, 0]
-#     y = current_xy[:, 1]
-
-#     sens_selected = groups
-#     sens_selected_unique = np.unique(sens_selected)
-
-#     colormap = {sens_selected_unique[i]: colors[i] for i in range(len(sens_selected_unique))}
-#     color_column = [colormap[group] for group in groups]
-
-#     # if index is an empty list 
-#     if not index:
-#         print('index is empty')
-#         print(index)
-#     else: 
-#         print('index is not empty') 
-#         print(index)
-
-#     # Prepare DataFrame with color information
-#     scatter_data = {'x': x, 'y': y, 'color': color_column, 'alpha': sampled_alpha}
-#     df = pd.DataFrame(scatter_data)
-#     scatter = hv.Scatter(df, kdims=['x', 'y'], vdims=['color', 'alpha']).opts(
-#         size=node_size, 
-#         color='color', 
-#         alpha='alpha',  
-#         line_color=None,
-#         framewise=True,
-#         hooks=[customize_unselected_glyph])
-
-#     # Calculate and draw polygons (regions or clusters) as before
-#     poly_df = RangesetCategorical.compute_contours(colormap, polygons_lst, max_edges_lst, threshold)
-#     polys = hv.Polygons([{('x', 'y'): list(zip(poly_df.iloc[i]['xs'][0][0], poly_df.iloc[i]['ys'][0][0])), 
-#                           'level': poly_df.iloc[i]['color']} for i in range(len(poly_df))], vdims='level')
-#     polys.opts(color='level', line_width=0, alpha=0.3, framewise=True, active_tools=[], tools=[])
-
-#     xmin, xmax = x.min(), x.max()
-#     ymin, ymax = y.min(), y.max()
-
-#     # Combine scatterplot and polygons
-#     plot = (polys * scatter).opts( 
-#         opts.Scatter(tools=['lasso_select', 'box_select'], 
-#                     #  show_legend=True,
-#                     #  legend_position='right',
-#                      framewise=True,
-#                      )
-#     ).opts(
-#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-#         show_legend=True,
-#         border=0,
-#         # show the toolbar at the top
-#         toolbar='above',
-#         framewise=True, 
-#         # set x and y ranges according to x and y
-#         xlim=(xmin - abs(xmin) * 0.1, xmax + abs(xmax) * 0.1), 
-#         ylim=(ymin - abs(ymin) * 0.1, ymax + abs(ymax) * 0.1), 
-#     ).opts(
-#         opts.Polygons(active_tools=[], tools=[], framewise=True)
-#     )
-#     # plot = scatter
-
-#     # # if index is an empty list
-#     # if not index:
-#     #     print('index is empty')
-#     # else:
-#     #     print('index is not empty') 
-
-#     return plot
-
 
 def draw_embedding_view_scatter(xy, layer, groups, alpha, colors):
     node_size = 5
@@ -159,9 +89,9 @@ def draw_embedding_view_scatter(xy, layer, groups, alpha, colors):
         size=node_size, 
         color='color', 
         alpha='alpha',  
-        line_color=None,
-        framewise=True,
-        # hooks=[customize_unselected_glyph]
+        line_color=None, 
+        framewise=True, 
+        # hooks=[customize_unselected_glyph] 
     ).opts( 
         opts.Scatter(tools=['lasso_select', 'box_select', 'tap'],  
         )
@@ -252,76 +182,6 @@ def draw_embedding_view_square(xy, layer, index):
     )
 
 
-# def draw_distribution(xy, layer, sens, sens_names, sens_name, colors, x_or_y):
-#     # sens_name_idx = sens_names.index(sens_name)
-#     # sens_selected = sens[sens_name_idx]
-
-#     # find the index of sens_name in sens_names
-#     sens_name_idx = []
-#     for sn in sens_name:
-#         sn_idx = sens_names.index(sn)
-#         sens_name_idx.append(sn_idx)
-
-#     tmp_sens_selected = sens[sens_name_idx]
-#     # Vectorize the function
-#     vectorized_concat = np.vectorize(util.concatenate_elements)
-#     # Apply the vectorized function across columns
-#     sens_selected = vectorized_concat(*tmp_sens_selected)
-
-#     sens_selected_unique = np.unique(sens_selected)
-#     colormap = {sens_selected_unique[i]: colors[i] for i in range(len(sens_selected_unique))}
-#     current_xy = xy[layer]
-#     x = current_xy[:,0]
-#     y = current_xy[:,1]
-#     node_indices = np.arange(0, len(x))
-#     nodes = hv.Nodes((x, y, node_indices, sens_selected), vdims=['Sens'])
-#     # draw distribution
-#     dist = None
-#     for ssu in sens_selected_unique:
-#         points = nodes.select(Sens=ssu)
-#         tmp_dist = hv.Distribution(points, kdims=[x_or_y]).opts(color=colormap[ssu])
-#         if dist is None:
-#             dist = tmp_dist
-#             # ydist = tmp_ydist
-#         else:
-#             dist *= tmp_dist
-#             # ydist *= tmp_ydist
-
-#     if x_or_y == 'y':
-#         return dist.opts(width=60, xaxis=None, yaxis=None, border=0)
-#     else:
-#         return dist.opts(height=60, xaxis=None, yaxis=None, border=0)
-
-
-# def draw_legend(sens, sens_names, sens_name, colors):
-#     # colors = hv.Cycle('Category20').values
-#     # colors = ['#d2bb4c', '#b054c1', '#82cd53', '#626ccc', '#d05d2e', '#6bd4a3', '#ce478c', '#5c7d39', '#bf4b56', '#7ab7d5', '#a0714a', '#7b5d84', '#c2c6a4', '#d3a1c4', '#4e7670']
-#     # use point and text elements to draw the legend, which should correspond to unique values in sens[sen_name_idx] and node colors in graph.nodes
-#     # get the unique values in sens[sen_name_idx]
-#     sens_name_idx = sens_names.index(sens_name)
-#     unique_sens = np.unique(sens[sens_name_idx])
-#     n_unique_sens = len(unique_sens)
-#     # draw the pointss vertically
-#     x_legend = np.zeros(n_unique_sens)
-#     y_legend = np.arange(0, n_unique_sens)
-#     # use linspace to make the points evenly spaced
-#     # y_legend = np.linspace(0, 0.1, len(unique_sens))
-#     # reverse the order of the y_legend
-#     y_legend = y_legend[::-1]
-#     # draw the texts
-#     texts = unique_sens
-#     # draw the points
-#     points = hv.Points((x_legend, y_legend, texts), vdims=['Sens']) \
-#         .opts(opts.Points(size=10, color='Sens', cmap=colors, nonselection_alpha=0.1, height=30 * n_unique_sens, 
-#             width=100, xaxis=None, yaxis=None, border=0, padding=0.5))
-#     # draw the texts
-#     for i, text in enumerate(texts):
-#         points = points * hv.Text(x_legend[i] + 0.6, y_legend[i], text)
-#     points.opts(show_legend=False, toolbar=None)
-
-#     return points
-
-
 def draw_embedding_view_legend(groups, colors):
     unique_sens = np.unique(groups)
     n_unique_sens = len(unique_sens)
@@ -352,35 +212,6 @@ def draw_embedding_view_legend(groups, colors):
     )
 
     return points
-
-
-# def draw_edge_legend():
-#     # colors_edge is a dict: {edge_type: color}
-#     colors_edge = {1: '#FE0000', 2: '#F4E0B9', 3: '#7D7463'}
-#     # draw the edge legend
-#     # use line and text elements to draw the legend
-#     # draw the lines
-#     # draw hv.Path for each line
-#     labels = ['unfair', 'fair', 'unfair & fair']
-#     paths = []
-#     text = None
-#     for i, edge_type in enumerate(colors_edge.keys()):
-#         paths.append([(0, i, edge_type), (0.5, i, edge_type)])
-#         if text is None:
-#             text = hv.Text(0.6, i, labels[i])
-#         else:
-#             text = text * hv.Text(0.6, i, labels[i])
-#     path = hv.Path(paths, vdims=['edge_type'])
-
-#     ret = (path * text).opts(
-#         opts.Path(color='edge_type', height=30 * len(colors_edge), width=100, cmap=colors_edge,
-#             xaxis=None, yaxis=None),
-#         opts.Text(text_font_size='10pt', text_align='left', text_baseline='middle', show_legend=False, toolbar=None)
-#         ).opts(
-#             border=0, padding=0.5, xlim=(-0.5, 3.5), ylim=(-1, len(colors_edge))
-#         )
-
-#     return ret
 
 
 def draw_bar_metric_view(data, metric_name):
@@ -462,36 +293,6 @@ def draw_correlation_view_selection(correlations, p_vals, text, x, y, cmap_name=
     return heatmap
 
 
-# Function to draw the correlation view hex plot
-# def draw_correlation_view_hex(x, y, feat, metric, selected_nodes, gridsize=30):
-#     if x is None:
-#         index = 0
-#     else:
-#         index = int(x)  # Assuming x-coordinate corresponds to the index
-#     x_data = feat[index][selected_nodes]
-#     y_data = metric[selected_nodes]
-#     return hv.HexTiles((x_data, y_data)).opts(opts.HexTiles(gridsize=gridsize, tools=['hover'], colorbar=True)).opts(
-#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)]
-#     )
-
-
-# def draw_correlation_view_hex(index, feat, metric, selected_nodes, gridsize=30):
-#     x_data = feat[index][selected_nodes]
-#     y_data = metric[selected_nodes]
-#     return hv.HexTiles((x_data, y_data)).opts(opts.HexTiles(gridsize=gridsize, tools=['hover'], colorbar=True)).opts(
-#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)]
-#     )
-
-# def draw_correlation_view_hex(index, feat, individual_bias_metrics, selected_nodes, gridsize=30):
-#     x_data = feat[index][selected_nodes]
-#     y_data = individual_bias_metrics[selected_nodes]
-#     return hv.HexTiles((x_data, y_data)).opts(opts.HexTiles(gridsize=gridsize, tools=['hover'], colorbar=True)).opts(
-#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-#         # set x label to '# Neighbors'
-#         xlabel='# of Neighbors',
-#         ylabel='Bias Contribution',
-#         xrotation=90
-#     )
 def draw_correlation_view_hex(index, feat, individual_bias_metrics, gridsize=30):
     x_data = feat[index]
     y_data = individual_bias_metrics
@@ -597,46 +398,6 @@ def draw_correlation_view_square(hop, feat, individual_bias_metrics, index):
         opts.Scatter(size=5, color='red', line_color='black', fill_alpha=0, line_width=3, marker='s',
                      framewise=True)
     )
-    
-
-
-# def draw_correlation_view_violin(x, y, feat, metric, selected_nodes):
-#     if x is None:
-#         index = 0
-#     else:
-#         index = int(x)  # Assuming x-coordinate corresponds to the index
-#     x_data = feat[index][selected_nodes]
-#     y_data = metric[selected_nodes]
-#     data = pd.DataFrame({'feat': x_data, 'metric': y_data})
-#     violin_list = [hv.Violin(data[data['feat'] == i], vdims='metric') for i in data['feat'].unique()]
-#     violin_plot = hv.Overlay(violin_list)
-#     violin_plot.opts(opts.Violin(tools=['hover'], cmap='Category20')).opts(
-#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)]
-#     )
-
-#     return violin_plot
-
-
-# def draw_correlation_view_legend(cmap_name='coolwarm'):
-#     # Get the colormap
-#     cmap = plt.get_cmap(cmap_name)
-
-#     # Convert the colormap to a list of colors in hexadecimal format
-#     colors = [mcolors.rgb2hex(cmap(i)) for i in range(cmap.N)]
-
-#     # Define a 1D array
-#     data = np.linspace(-1, 1, 256)
-
-#     # Add an extra dimension to make it a 2D array
-#     data = data[None, :]
-
-#     # Create an Image with the 2D array and apply the colormap
-#     img = hv.Image(data, bounds=(-1,0,1,0.1)).opts(cmap=colors, colorbar=False, yaxis=None, 
-#                                                 toolbar=None, framewise=True, title='',
-#                                                 xlabel='Correlation',
-#                                                 hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)])
-    
-#     return img
 
 
 def draw_density_view_scatter(graph_metrics):
@@ -652,56 +413,6 @@ def draw_density_view_scatter(graph_metrics):
                              color=FILL_GREY_COLOR,
                              size=5
                              )
-
-
-# def draw_subgraph_view_heatmap(communities, index):
-#     # get the first element of list index if it is not empty
-#     if index:
-#         community = communities[index[0]]
-#         # Extract non-zero indices
-#         rows, cols = community.nonzero()
-
-#         # Prepare data for Holoviews
-#         # We create a list of tuples (i, j, 1) for each non-zero element
-#         data = [(rows[i], cols[i], 1) for i in range(len(rows))]
-
-#         # Define a Holoviews Dataset
-#         hv_dataset = hv.Dataset(data, ['i', 'j'], 'value')
-
-#         # Create a heatmap using the dataset
-#         # We use a colormap that maps 1 to black
-#         heatmap = hv.HeatMap(hv_dataset).opts(cmap=['black'], colorbar=False)
-#     else:
-#         heatmap = hv.HeatMap([])
-
-#     return heatmap
-def draw_subgraph_view_heatmap(selected_nodes, adj):
-    colors = ["white", FILL_GREY_COLOR]  # Colors from 0 to 1
-    cmap = LinearSegmentedColormap.from_list("custom_cmap", colors, N=2)
-    if len(selected_nodes) != adj.shape[0]:
-        # Extract non-zero indices
-        rows, cols = adj[selected_nodes][: , selected_nodes].nonzero()
-
-        # Prepare data for Holoviews
-        # We create a list of tuples (i, j, 1) for each non-zero element
-        data = [(rows[i], cols[i], 1) for i in range(len(rows))]
-
-        # Define a Holoviews Dataset
-        hv_dataset = hv.Dataset(data, ['i', 'j'], 'value')
-        # Create a heatmap using the dataset
-        heatmap = hv.HeatMap(hv_dataset)
-    else:
-        heatmap = hv.HeatMap([])
-
-    return heatmap.opts(hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-                        shared_axes=False,
-                        xaxis=None,
-                        yaxis=None,
-                        framewise=True,
-                        border=0,
-                        colorbar=False,
-                        # set the color to #717171
-                        cmap=cmap).redim.range(x=(0, len(selected_nodes)), y=(0, len(selected_nodes)))
 
 
 # Define a hook function to modify the plot
@@ -740,93 +451,42 @@ def draw_attribute_view_violin(variable_data, feat_name, groups, selected_nodes)
     return violin
 
 
-# def draw_attribute_view_violin(variable_data, feat_name, groups, selected_nodes):
-#     if isinstance(variable_data, np.ndarray):
-#         variable_data = pd.Series(variable_data, name=feat_name)
-    
-#     if isinstance(groups, np.ndarray):
-#         groups = pd.Series(groups, name="Group")
-    
-#     df = pd.concat([variable_data, groups], axis=1)
-#     df = df.iloc[selected_nodes]
-    
-#     # Global statistical test (Kruskal-Wallis)
-#     kruskal_stat, kruskal_p = kruskal(*[group[feat_name].values for name, group in df.groupby("Group")])
-    
-#     # Pairwise tests (Mann-Whitney U) for each group
-#     group_colors = {}
-#     for group_name in df['Group'].unique():
-#         group_data = df[df['Group'] == group_name][feat_name]
-#         other_data = df[df['Group'] != group_name][feat_name]
-        
-#         stat, p = mannwhitneyu(group_data, other_data, alternative='two-sided')
-#         group_colors[group_name] = 'green' if p > 0.05 else 'red'  # Use 'red' to indicate differnt distribution
+def draw_dependency_view_attr_sens_bar_all(variable_data, feat_name, groups):
+    # Ensure variable_data and groups are pandas Series with the same length
+    if isinstance(variable_data, np.ndarray):
+        variable_data = pd.Series(variable_data, name=feat_name)
+    if isinstance(groups, np.ndarray): 
+        groups = pd.Series(groups, name="Group")
 
-#     # Create individual violin plots for each group and set colors
-#     violin_plots = []
-#     for group_name in df['Group'].unique():
-#         group_df = df[df['Group'] == group_name]
-#         color = group_colors[group_name]
-#         violin = hv.Violin(group_df, ('Group', 'Group'), feat_name).opts(violin_fill_color=color)
-#         violin_plots.append(violin)
+    # convert variable_data to string
+    variable_data = variable_data.astype(str)
 
-#     # Overlay the plots to create a combined plot with different colors
-#     violin_plot = hv.Overlay(violin_plots).opts(toolbar=None, ylabel=f"{feat_name} (p={kruskal_p:.3f})", 
-#                                                 shared_axes=False)
-#     if kruskal_p <= 0.05:
-#         violin_plot.opts(hooks=[ylabel_red_hook])
-#     else:
-#         violin_plot.opts(hooks=[ylabel_black_hook])
-    
-#     return violin_plot.opts(hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)])
+    # create a column count with the same length as variable_data and all values are 1
+    count = np.ones(len(variable_data))
+    # create a DataFrame with variable_data, groups, and count
+    df = pd.DataFrame({feat_name: variable_data, 'Group': groups, 'Count': count})
+
+    # # Create the bar chart
+    # bars = hv.Bars(aggregated_df, ['Group', feat_name], 'Count').opts(
+    bars = hv.Bars(df, ['Group', feat_name], 'Count').aggregate(function=np.sum).opts(
+        stacked=False, 
+        xlabel='Sensitive Group', ylabel='Count',
+        shared_axes=False,
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+        invert_axes=True,
+        multi_level=False,
+        show_legend=False,
+        fill_alpha=0,
+        line_width=1.5,
+        # put toolbar on the top
+        toolbar='above', 
+    )
+    print('in draw_dependency_view_attr_sens_bar_all')
+
+    return bars
 
 
-# def draw_attribute_view_bar(variable_data, feat_name, groups, selected_nodes):
-#     # Ensure variable_data and groups are pandas Series with the same length
-#     if isinstance(variable_data, np.ndarray):
-#         variable_data = pd.Series(variable_data, name=feat_name)
-#     if isinstance(groups, np.ndarray):
-#         groups = pd.Series(groups, name="Group")
-
-#     variable_data = variable_data.iloc[selected_nodes]
-#     groups = groups.iloc[selected_nodes]
-
-#     # Step 1: Construct a Contingency Table
-#     contingency_table = pd.crosstab(variable_data, groups)
-
-#     # Step 2: Perform the Chi-Square Test
-#     chi2_stat, chi2_p, dof, expected = chi2_contingency(contingency_table)
-
-#     # Pairwise tests (Chi-Square) for each group
-#     group_colors = {}
-#     for group_name in groups.unique():
-#         group_data = contingency_table[group_name]
-#         other_data = contingency_table.drop(columns=group_name)
-#         stat, p, dof, expected = chi2_contingency(pd.concat([group_data, other_data], axis=1))
-#         group_colors[group_name] = 'green' if p > 0.05 else 'red'
-    
-#     # Combine into a DataFrame
-#     df = pd.concat([variable_data, groups], axis=1)
-    
-#     # Count occurrences of each category within each group
-#     aggregated_df = df.groupby(['Group', feat_name]).size().reset_index(name='Count')
-    
-#     # Create the bar chart
-#     bars = hv.Bars(aggregated_df, ['Group', feat_name], 'Count').opts(stacked=False, width=400, tools=['hover'],
-#                                                                       xlabel='Group', ylabel='Count',
-#                                                                       title=f'{feat_name} (p={chi2_p:.3f})',
-#                                                                       shared_axes=False,
-#                                                                       color=hv.dim('Group').categorize(group_colors),
-#                                                                       hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-#                                                                       xrotation=90)
-#     if chi2_p <= 0.05:
-#         bars.opts(hooks=[ylabel_red_hook])
-#     else:
-#         bars.opts(hooks=[ylabel_black_hook])
-#     return bars
-
-
-def draw_attribute_view_bar(variable_data, feat_name, groups, selected_nodes):
+def draw_dependency_view_attr_sens_bar_selected(variable_data, feat_name, groups, selected_nodes):
     # Ensure variable_data and groups are pandas Series with the same length
     if isinstance(variable_data, np.ndarray):
         variable_data = pd.Series(variable_data, name=feat_name)
@@ -843,344 +503,35 @@ def draw_attribute_view_bar(variable_data, feat_name, groups, selected_nodes):
     # create a DataFrame with variable_data, groups, and count
     df = pd.DataFrame({feat_name: variable_data, 'Group': groups, 'Count': count})
 
-    # Step 1: Construct a Contingency Table
-    # contingency_table = pd.crosstab(variable_data, groups)
-
-    # Step 2: Perform the Chi-Square Test
-    # chi2_stat, chi2_p, dof, expected = chi2_contingency(contingency_table)
-    
-    # Combine into a DataFrame
-    # df = pd.concat([variable_data, groups], axis=1)
-    
-    # # Count occurrences of each category within each group
-    # aggregated_df = df.groupby(['Group', feat_name]).size().reset_index(name='Count')
-
-    # Create custom hover tool
-    custom_hover = HoverTool(tooltips=[
-        ('Count', '@Count')  # Display the 'Count' column values
-    ])
-
     # # Create the bar chart
     # bars = hv.Bars(aggregated_df, ['Group', feat_name], 'Count').opts(
     bars = hv.Bars(df, ['Group', feat_name], 'Count').aggregate(function=np.sum).opts(
-        stacked=False, tools=[custom_hover], 
-        xlabel='Sensitive Subgroup', ylabel='Count',
-    #   title=f'{feat_name} (p={chi2_p:.3f})',
+        stacked=False, 
+        xlabel='Sensitive Group', ylabel='Count',
         shared_axes=False,
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
         invert_axes=True,
         multi_level=False,
-        # color='',
-        cmap=[BAR_COLOR0, BAR_COLOR1],
-        # put legend on the right
-        legend_position='right',
         # put toolbar on the top
         toolbar='above',
-        line_color=None
+        line_color=None,
+        fill_alpha=1,
+        fill_color=FILL_GREY_COLOR,
+        show_legend=False, 
     )
 
     return bars
 
 
-# def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nodes, 
-#                                  individual_bias_metrics, x, y, contributions, 
-#                                  contributions_selected_attrs,
-#                                  hw_ratio,
-#                                  selected_attrs_ls):
-#     # print(contributions)
-#     n_all_nodes = len(feat)
-#     n_selected_attrs = len(selected_attrs_ls)
-#     # print(selected_attrs_ls)
-#     # print(groups)
-#     groups = pd.Series(groups, name="Group")
-#     bias_indicators, overall_bias_indicators, ns, all_ns, all_unique_groups = util.analyze_bias(feat, groups, columns_categorical, selected_nodes)
-#     # # k being the sum of overall_bias_indicator
-#     # k = len(overall_bias_indicators) - overall_bias_indicators.sum()
-#     # print(ns)
-#     # ns being the number of each unique value in 
-#     m = len(ns)
-#     # print(ns) 
-#     n = len(overall_bias_indicators)
-
-#     circle_gap = 2
-
-#     ymax = n+1.5
-#     ymin = 0
-#     xmax = n_all_nodes * 1.1 
-#     # xmin = -n_all_nodes / 10 - 7 - circle_gap * n_selected_attrs * (xmax / (ymax - ymin)) / hw_ratio
-#     # solve: xmin = -circle_gap * (1 + n_selected_attrs) * ((xmax - xmin) / (ymax - ymin)) / hw_ratio
-#     xmin = (circle_gap * xmax * (n_selected_attrs + 1)) / (circle_gap * n_selected_attrs + circle_gap - hw_ratio * ymax + hw_ratio * ymin)
-
-#     # Prepare the data for Rectangles
-#     rect_data = []
-#     x0 = 0
-#     for j in range(m):
-#         # print(x0)
-#         width = ns[j]
-#         column = bias_indicators[:, j]
-#         # print([(x0, i, x0 + width, i+1, column[i]) for i in range(n)][-4])
-#         rect_data.extend([(x0, i, x0 + width, i+1, column[i], i) for i in range(n)])
-#         x0 += all_ns[j]
-
-#     rect_data = pd.DataFrame(rect_data, columns=['x0', 'y0', 'x1', 'y1', 'Color', 'ID'])        
-
-#     # Calculate the center of each column
-#     column_centers = [sum(all_ns[:i+1]) - all_ns[i]/2 for i in range(m)]
-#     # create yticks using column_centers and all_unique_groups
-#     yticks = [(c, all_unique_groups[i]) for i, c in enumerate(column_centers)]
-#     custom_hover = HoverTool(tooltips=[('Attr.:', '@{ID}')])
-#     # Create the Rectangles plot
-#     plot = hv.Rectangles(rect_data, vdims=['Color', 'ID']).opts(
-#         opts.Rectangles(
-#                         # tools=['tap'], active_tools=['tap'],
-#                         color=hv.dim('Color').categorize(
-#                             {False: COLOR_FALSE, True: COLOR_TRUE}
-#                         ),
-#                         # yformatter='%.0f',  # Show integers on y-axis
-#                         # yticks=list(range(n)),  # Set y-axis ticks 
-#                         # yaxis=None,  # Hide y-axis
-#                         xaxis=None,  # Hide x-axis
-#                         xlabel='Sensitive Subgroup',  # X-axis label
-#                         yticks=yticks,
-#                         line_width=0.1,
-#                         framewise=True,
-#                         # alpha=0.3,
-#                         # xrotation=90
-#                         tools=[custom_hover]
-#                         ))  # Column tick labels
-    
-#     # glyph plot
-#     r_sector1 = 0.45
-#     r_ellipse1 = r_sector1 * 1.5
-#     r_ellipse2 = r_sector1
-#     r_sector2 = r_sector1 / 2 
-#     r_trans_circle = r_sector1 * 2
-#     r_selected_attr_circle = r_sector1 * 1.5
-#     r_selected_attr_sector = r_sector1
-
-#     # calculate the proportion of x range / y range
-#     x_y_ratio = (xmax - xmin) / (ymax - ymin) / hw_ratio
-
-#     # circle_x = -n_all_nodes / 20 - 2
-#     circle_x = -circle_gap / 2 * x_y_ratio
-
-#     # # Calculate correlations and p-values
-#     feat_np = feat.to_numpy()
-#     # Placeholder lists for correlations and p-values
-#     correlations = []
-#     p_values = []
-
-#     # Iterate over all features in feat_np using their index to maintain order
-#     for index, is_categorical in enumerate(columns_categorical):
-#         # Extract the feature column
-#         feature_column = feat_np[:, index]
-        
-#         # Check if the feature is continuous or categorical and calculate accordingly
-#         if is_categorical:
-#             # Point-Biserial correlation for categorical features
-#             correlation, p_val = stats.pointbiserialr(feature_column, individual_bias_metrics)
-#         else:
-#             # Pearson correlation for continuous features
-#             correlation, p_val = stats.pearsonr(feature_column, individual_bias_metrics)
-        
-#         # Append the results to the lists
-#         correlations.append(abs(correlation))
-#         p_values.append(p_val)
-
-#     # contributions is a 1d np array, get the max absolute value
-#     contributions_selected_attrs = np.array(contributions_selected_attrs)
-#     max_contrib = np.max(np.concatenate([np.abs(contributions), np.abs(contributions_selected_attrs)]))
-#     # Normalize contributions to [-1, 1] 
-#     normalized_contributions = contributions / max_contrib
-#     sector_pointes1_angles = normalized_contributions * 180
-#     normalized_contributions_selected_attrs = contributions_selected_attrs / max_contrib
-#     selected_attr_sector_angles = normalized_contributions_selected_attrs * 180
- 
-#     n = bias_indicators.shape[0]
-
-#     ellipse_data = []
-#     hover_data = []
-#     for i in range(n):
-#         # sector_pointes1: contributions
-#         end_angle = sector_pointes1_angles[i]
-#         sector_points1 = create_sector(center=(circle_x, i + 0.5),
-#                                         radius=r_sector1,
-#                                         x_y_ratio = x_y_ratio,
-#                                         start_angle=90,
-#                                         end_angle=90-end_angle,)
-#         sector_data1 = {('x', 'y'): sector_points1, 'color': FILL_GREY_COLOR}
-#         ellipse_data.append(sector_data1)
-
-#         # ellipse1: overall bias indicators
-#         # # Determine color based on row index relative to k
-#         # color = 'green' if i < k else 'red'
-#         color = COLOR_TRUE if overall_bias_indicators[i] else COLOR_FALSE
-#         e = hv.Ellipse(circle_x, i + 0.5, (x_y_ratio * r_ellipse1, r_ellipse1))
-#         e_data = {('x', 'y'): e.array(), 'color': color}
-#         ellipse_data.append(e_data)
-
-#         # ellipse2: just white
-#         e = hv.Ellipse(circle_x, i + 0.5, (x_y_ratio * r_ellipse2, r_ellipse2))
-#         e_data = {('x', 'y'): e.array(), 'color': 'white'}
-#         ellipse_data.append(e_data)
-
-#         # sector_points2: angle for correlations, color for p-values
-#         p_val = p_values[i]
-#         # color = COLOR_TRUE if p_val < 0.05 else COLOR_FALSE
-#         color = FILL_GREY_COLOR
-#         correlation = correlations[i]
-#         end_angle = 360 * correlation
-#         sector_points2 = create_sector(center=(circle_x, i + 0.5), 
-#                                        radius=r_sector2,
-#                                        x_y_ratio = x_y_ratio,
-#                                        start_angle=90, 
-#                                        end_angle=90-end_angle,)
-#         sector_data2 = {('x', 'y'): sector_points2, 'color': color}
-#         ellipse_data.append(sector_data2)
-
-#         # transparent circle for hovering
-#         trans_circle = hv.Ellipse(circle_x, i + 0.5, (x_y_ratio * r_trans_circle, r_trans_circle))
-#         trans_circle_data = {('x', 'y'): trans_circle.array(),
-#                              'Bias Contribution': contributions[i],
-#                              'Attribute Bias': 'true' if overall_bias_indicators[i] else 'false',
-#                              'Abs Corr(Attr, Contribution)': correlations[i]}
-#         hover_data.append(trans_circle_data)
-
-#     x_data = []
-#     for i, selected_attrs in enumerate(selected_attrs_ls):
-#         # attr selection circles
-#         x_pos = circle_x - circle_gap * x_y_ratio * (i + 1)
-#         for selected_attr in selected_attrs:
-#             y_pos = selected_attr + 0.5
-#             # attr contribution sector
-#             end_angle = selected_attr_sector_angles[i]
-#             selected_attr_sector = create_sector(center=(x_pos, y_pos),
-#                                             radius=r_selected_attr_sector,
-#                                             x_y_ratio = x_y_ratio,
-#                                             start_angle=90,
-#                                             end_angle=90-end_angle,)
-#             sector_data1 = {('x', 'y'): selected_attr_sector, 'color': FILL_GREY_COLOR}
-#             ellipse_data.append(sector_data1)
-#             # inner circle
-#             e = hv.Ellipse(x_pos, y_pos, (x_y_ratio * r_selected_attr_circle, r_selected_attr_circle))
-#             e_data = {('x', 'y'): e.array(), 'color': 'black'} 
-#             ellipse_data.append(e_data)
-
-#         # xs
-#         x_h_line = x_pos + circle_gap * x_y_ratio / 2
-#         y_pos = n + 0.5
-#         h_line_data = [(x_h_line, 0), (x_h_line, y_pos + 0.5)]  
-#         x_data.append(h_line_data)
-#         if selected_attrs:
-#             x_left = x_pos - r_sector1 * x_y_ratio
-#             x_right = x_pos + r_sector1 * x_y_ratio
-#             y_bottom = y_pos - r_sector1
-#             y_top = y_pos + r_sector1
-#             p1_data = [(x_left, y_bottom), (x_right, y_top)]
-#             p2_data = [(x_right, y_bottom), (x_left, y_top)]
-#             p_data = [p1_data, p2_data]
-#             x_data.extend(p_data)
-
-#     glyph_plot = hv.Polygons(ellipse_data, vdims='color').opts(
-#         line_width=0,
-#         color='color',
-#         framewise=True,
-#     )
-#     # print(x_data)
-#     x_plot = hv.Path(x_data).opts(
-#         color='black',
-#         framewise=True,
-#     )
-
-#     trans_circles = hv.Polygons(hover_data, 
-#                                 vdims=['Bias Contribution', 
-#                                        'Attribute Bias', 
-#                                        'Abs Corr(Attr, Contribution)']).opts(
-#         fill_alpha=0,
-#         line_width=0, 
-#         tools=['hover'], 
-#         framewise=True,
-#     )
-
-#     # Prepare data for transparent rectangles with black strokes
-#     transparent_rect_data = []
-#     x0 = 0  # Starting x-coordinate
-#     for width in all_ns:
-#         # Add a rectangle for each group, transparent fill and black stroke
-#         transparent_rect_data.append((x0, 0, x0 + width, n, LINE_GREY_COLOR))
-#         x0 += width
-
-#     # Convert transparent rectangle data into a DataFrame
-#     transparent_rect_df = pd.DataFrame(transparent_rect_data, columns=['x0', 'y0', 'x1', 'y1', 'Line_Color'])
-
-#     # Create Transparent Rectangles plot
-#     transparent_rectangles_plot = hv.Rectangles(transparent_rect_df, vdims=['Line_Color']).opts(
-#         fill_alpha=0,  # Set fill color to transparent
-#         line_color=hv.dim('Line_Color'),
-#         line_width=1, 
-#         tools=[], 
-#         framewise=True,
-#     ) 
-    
-#     # Overlay Transparent Rectangles onto the existing combined plot with rectangles
-#     final_combined_plot = (plot * glyph_plot * x_plot * transparent_rectangles_plot * trans_circles)
-#     # .opts(
-#     #     hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-#     #     invert_axes=True,
-#     #     framewise=True,
-#     #     shared_axes=False,
-#     # ).redim.range(x=(-n_all_nodes / 10 - 5-2, n_all_nodes*1.1), y=(0, n+1))
-    
-#     # Return the final combined plot
-#     # return final_combined_plot
-#     if x:
-#         if 0 <= x <= n:
-#             # Draw an arrow pointing downwards at the top of the plot
-#             # Since the plot is inverted, the top is actually on the right, before inverting
-#             arrow_y_position = n_all_nodes*1.02  # Adjust this value as needed to place the arrow correctly
-#             arrow = hv.Arrow(int(x)+0.5, arrow_y_position, direction='v', arrowstyle='-|>').opts(
-#                 framewise=True,
-#             )
-
-#             # Overlay the Arrow on the Final Combined Plot
-#             final_plot_with_arrow = final_combined_plot * arrow
-#         else:
-#             final_plot_with_arrow = final_combined_plot
-#     else:
-#         final_plot_with_arrow = final_combined_plot
-
-#     # Return the final plot with the arrow
-#     return final_plot_with_arrow.opts(
-#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-#         invert_axes=True,
-#         framewise=True,
-#         shared_axes=False,
-#         xlim=(xmin, xmax),
-#         ylim=(ymin, ymax) 
-#     # ).redim.range(x=(-n_all_nodes / 10 - 5-2, n_all_nodes*1.1), y=(0, n+1))
-#     )
-#     # .redim.range(x=(xmin, xmax), y=(ymin, ymax)) 
-
-
-def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nodes, 
-                                #  individual_bias_metrics, 
-                                 x, y, contributions, 
-                                 contributions_selected_attrs,
-                                 hw_ratio,
-                                 selected_attrs_ls):
-    # print(contributions)
+def draw_attribute_view_overview_all(feat, groups, columns_categorical, hw_ratio, selected_attrs_ls):
     n_all_nodes = len(feat)
     n_selected_attrs = len(selected_attrs_ls)
-    # print(selected_attrs_ls)
-    # print(groups)
     groups = pd.Series(groups, name="Group")
+    selected_nodes = np.arange(n_all_nodes)
     bias_indicators, overall_bias_indicators, ns, all_ns, all_unique_groups = util.analyze_bias(feat, groups, columns_categorical, selected_nodes)
-    # # k being the sum of overall_bias_indicator
-    # k = len(overall_bias_indicators) - overall_bias_indicators.sum()
-    # print(ns)
+
     # ns being the number of each unique value in 
     m = len(ns)
-    # print(ns) 
     n = len(overall_bias_indicators)
 
     circle_gap = 2
@@ -1188,7 +539,6 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
     ymax = n+1.5
     ymin = 0
     xmax = n_all_nodes * 1.1 
-    # xmin = -n_all_nodes / 10 - 7 - circle_gap * n_selected_attrs * (xmax / (ymax - ymin)) / hw_ratio
     # solve: xmin = -circle_gap * (1 + n_selected_attrs) * ((xmax - xmin) / (ymax - ymin)) / hw_ratio
     xmin = (circle_gap * xmax * (n_selected_attrs + 1)) / (circle_gap * n_selected_attrs + circle_gap - hw_ratio * ymax + hw_ratio * ymin)
 
@@ -1196,10 +546,8 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
     rect_data = []
     x0 = 0
     for j in range(m):
-        # print(x0)
         width = ns[j]
         column = bias_indicators[:, j]
-        # print([(x0, i, x0 + width, i+1, column[i]) for i in range(n)][-4])
         rect_data.extend([(x0, i, x0 + width, i+1, column[i], i) for i in range(n)])
         x0 += all_ns[j]
 
@@ -1225,8 +573,72 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
                         yticks=yticks,
                         line_width=0.1,
                         framewise=True,
-                        # alpha=0.3,
-                        # xrotation=90
+                        tools=[custom_hover],
+                        alpha=0.3
+                        )).opts(
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+        invert_axes=True,
+        framewise=True,
+        shared_axes=False,
+        xlim=(xmin, xmax),
+        ylim=(ymin, ymax) 
+    )
+    return plot
+
+
+def draw_attribute_view_overview_selected(feat, groups, columns_categorical, selected_nodes, 
+                                 x, y, contributions, 
+                                 contributions_selected_attrs,
+                                 hw_ratio,
+                                 selected_attrs_ls):
+    n_all_nodes = len(feat)
+    n_selected_attrs = len(selected_attrs_ls)
+    groups = pd.Series(groups, name="Group")
+    bias_indicators, overall_bias_indicators, ns, all_ns, all_unique_groups = util.analyze_bias(feat, groups, columns_categorical, selected_nodes)
+
+    # ns being the number of each unique value in 
+    m = len(ns)
+    n = len(overall_bias_indicators)
+
+    circle_gap = 2
+
+    ymax = n+1.5
+    ymin = 0
+    xmax = n_all_nodes * 1.1 
+    # solve: xmin = -circle_gap * (1 + n_selected_attrs) * ((xmax - xmin) / (ymax - ymin)) / hw_ratio
+    xmin = (circle_gap * xmax * (n_selected_attrs + 1)) / (circle_gap * n_selected_attrs + circle_gap - hw_ratio * ymax + hw_ratio * ymin)
+
+    # Prepare the data for Rectangles
+    rect_data = []
+    x0 = 0
+    for j in range(m):
+        width = ns[j]
+        column = bias_indicators[:, j]
+        rect_data.extend([(x0, i, x0 + width, i+1, column[i], i) for i in range(n)])
+        x0 += all_ns[j]
+
+    rect_data = pd.DataFrame(rect_data, columns=['x0', 'y0', 'x1', 'y1', 'Color', 'ID'])        
+
+    # Calculate the center of each column
+    column_centers = [sum(all_ns[:i+1]) - all_ns[i]/2 for i in range(m)]
+    # create yticks using column_centers and all_unique_groups
+    yticks = [(c, all_unique_groups[i]) for i, c in enumerate(column_centers)]
+    custom_hover = HoverTool(tooltips=[('Attr.:', '@{ID}')])
+    # Create the Rectangles plot
+    plot = hv.Rectangles(rect_data, vdims=['Color', 'ID']).opts(
+        opts.Rectangles(
+                        # tools=['tap'], active_tools=['tap'],
+                        color=hv.dim('Color').categorize(
+                            {False: COLOR_FALSE, True: COLOR_TRUE}
+                        ),
+                        # yformatter='%.0f',  # Show integers on y-axis
+                        # yticks=list(range(n)),  # Set y-axis ticks 
+                        # yaxis=None,  # Hide y-axis
+                        xaxis=None,  # Hide x-axis
+                        xlabel='Sensitive Subgroup',  # X-axis label
+                        yticks=yticks,
+                        line_width=0.1,
+                        framewise=True,
                         tools=[custom_hover]
                         ))  # Column tick labels
     
@@ -1244,9 +656,6 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
 
     # circle_x = -n_all_nodes / 20 - 2
     circle_x = -circle_gap / 2 * x_y_ratio
-
-    # # Calculate correlations and p-values
-    feat_np = feat.to_numpy()
 
     # contributions is a 1d np array, get the max absolute value
     print(contributions_selected_attrs)
@@ -1371,12 +780,6 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
     
     # Overlay Transparent Rectangles onto the existing combined plot with rectangles
     final_combined_plot = (plot * glyph_plot * x_plot * transparent_rectangles_plot * trans_circles)
-    # .opts(
-    #     hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-    #     invert_axes=True,
-    #     framewise=True,
-    #     shared_axes=False,
-    # ).redim.range(x=(-n_all_nodes / 10 - 5-2, n_all_nodes*1.1), y=(0, n+1))
     
     # Return the final combined plot
     # return final_combined_plot
@@ -1395,7 +798,7 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
             final_plot_with_arrow = final_combined_plot
     else:
         final_plot_with_arrow = final_combined_plot
-
+    print('draw_attribute_view_overview_selected is done')
     # Return the final plot with the arrow
     return final_plot_with_arrow.opts(
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
@@ -1404,201 +807,197 @@ def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nod
         shared_axes=False,
         xlim=(xmin, xmax),
         ylim=(ymin, ymax) 
-    # ).redim.range(x=(-n_all_nodes / 10 - 5-2, n_all_nodes*1.1), y=(0, n+1))
     )
-    # .redim.range(x=(xmin, xmax), y=(ymin, ymax)) 
 
 
-# def draw_attribute_view_overview(feat, groups, columns_categorical, selected_nodes, individual_bias_metrics, x, y):
-#     n_all_nodes = len(feat)
-#     # print(groups)
-#     groups = pd.Series(groups, name="Group")
-#     bias_indicators, overall_bias_indicators, ns, all_ns, all_unique_groups = util.analyze_bias(feat, groups, columns_categorical, selected_nodes)
-#     # # k being the sum of overall_bias_indicator
-#     # k = len(overall_bias_indicators) - overall_bias_indicators.sum()
-#     # print(ns)
-#     # ns being the number of each unique value in 
-#     m = len(ns)
-#     # print(ns)
-#     n = len(overall_bias_indicators)
-#     # Prepare the data for Rectangles
-#     rect_data = []
-#     x0 = 0
-#     for j in range(m):
-#         # print(x0)
-#         width = ns[j]
-#         column = bias_indicators[:, j]
-#         # print([(x0, i, x0 + width, i+1, column[i]) for i in range(n)][-4])
-#         rect_data.extend([(x0, i, x0 + width, i+1, column[i], i) for i in range(n)])
-#         x0 += all_ns[j]
-
-#     rect_data = pd.DataFrame(rect_data, columns=['x0', 'y0', 'x1', 'y1', 'Color', 'ID'])        
-
-#     # Calculate the center of each column
-#     column_centers = [sum(all_ns[:i+1]) - all_ns[i]/2 for i in range(m)]
-#     # create yticks using column_centers and all_unique_groups
-#     yticks = [(c, all_unique_groups[i]) for i, c in enumerate(column_centers)]
-
-#     # Create the Rectangles plot
-#     plot = hv.Rectangles(rect_data, vdims=['Color', 'ID']).opts(
-#         opts.Rectangles(
-#                         # tools=['tap'], active_tools=['tap'],
-#                         color=hv.dim('Color').categorize(
-#                             {False: COLOR_FALSE, True: COLOR_TRUE}),
-#                         # yformatter='%.0f',  # Show integers on y-axis
-#                         # yticks=list(range(n)),  # Set y-axis ticks
-#                         # yaxis=None,  # Hide y-axis
-#                         xaxis=None,  # Hide x-axis
-#                         xlabel='Sensitive Subgroup',  # X-axis label
-#                         yticks=yticks,
-#                         line_width=0.1,
-#                         # alpha=0.3,
-#                         # xrotation=90
-#                         ))  # Column tick labels
-
-#    # Step 1: Correctly Generate Circle Data with Accurate Color Assignment
-#     # Calculate the x-coordinate for circle centers (to the left of the first column)
-#     # circle_x = -ns[0] / 2
-#     circle_x = -n_all_nodes / 20 - 2
-#     n = bias_indicators.shape[0]
-#     circle_data_corrected = []
-#     for i in range(n):
-#         # # Determine color based on row index relative to k
-#         # color = 'green' if i < k else 'red'
-#         color = COLOR_TRUE if overall_bias_indicators[i] else COLOR_FALSE
-#         # Calculate y-coordinate for the center of the circle (midpoint of the rectangle's height)
-#         y_center = i + 0.5
-#         # Append circle information (x-coordinate, y-coordinate, and color)
-#         circle_data_corrected.append((circle_x, y_center, color, i))
-
-#     circle_data_corrected = pd.DataFrame(circle_data_corrected, columns=['x', 'y', 'Color', 'ID'])
-
-#     # Step 2: Create Corrected Circles Plot
-#     circles_plot_corrected = hv.Scatter(circle_data_corrected, ['x', 'y'], ['Color', 'ID']).opts(
-#         color='Color', marker='circle', size=1,
-#         tools=[],  # No interactive tools needed for circles
-#         legend_position='top_right')
-
-#     # Step 3: Overlay Corrected Circles Plot onto the Existing Rectangles Plot
-#     combined_plot_corrected = plot * circles_plot_corrected
-
-#     # return combined_plot_corrected.opts(hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)])
-
-#     # # Calculate correlations and p-values
-#     feat_np = feat.to_numpy()
-#     # Placeholder lists for correlations and p-values
-#     correlations = []
-#     p_values = []
-
-#     # Iterate over all features in feat_np using their index to maintain order
-#     for index, is_categorical in enumerate(columns_categorical):
-#         # Extract the feature column
-#         feature_column = feat_np[:, index]
-        
-#         # Check if the feature is continuous or categorical and calculate accordingly
-#         if is_categorical:
-#             # Point-Biserial correlation for categorical features
-#             correlation, p_val = stats.pointbiserialr(feature_column, individual_bias_metrics)
-#         else:
-#             # Pearson correlation for continuous features
-#             correlation, p_val = stats.pearsonr(feature_column, individual_bias_metrics)
-        
-#         # Append the results to the lists
-#         correlations.append(correlation)
-#         p_values.append(p_val)
-
-#     # Calculate the x-coordinate for the rectangles (to the left of the circles)
-#     square_x = -n_all_nodes / 10 - 5  # This will need to be adjusted to prevent overlap with circles
-
-#     # Prepare Rectangle Data to mimic Squares
-#     rectangle_data = []
-#     cmap = plt.get_cmap('coolwarm')
-#     for i, (corr, p_val) in enumerate(zip(correlations, p_values)):
-#         # Convert the RGBA color from the colormap to a hexadecimal color
-#         fill_color = mcolors.to_hex(cmap((corr + 1) / 2)) if not np.isnan(corr) else 'white'
-#         line_color = 'red' if p_val < 0.05 else 'black'  # No line color if p-value is not significant
-
-#         # Append rectangle data
-#         rectangle_data.append((square_x, i, square_x + 10, i + 1, fill_color, line_color, corr, i))
-
-#     # After the loop, convert the list of tuples to a DataFrame
-#     rectangle_df = pd.DataFrame(rectangle_data, columns=['x0', 'y0', 'x1', 'y1', 'Fill_Color', 'Line_Color', 'Correlation', 'ID'])
-
-#     # Create the Rectangles plot to mimic Squares
-#     rectangles_plot = hv.Rectangles(rectangle_df, vdims=['Fill_Color', 'Line_Color', 'ID']).opts(
-#         fill_color=hv.dim('Fill_Color'),  # Fill rectangles with the specified color
-#         line_color=hv.dim('Line_Color'),  # Add a border around the rectangles
-#         line_width=0.5,
-#         # fill_alpha=0.5  # Adjust transparency as needed
-#     )
+def draw_dependency_view_attr_degree_violin(feat, computational_graph_degrees, selected_nodes, hop):
+    # Prepare the data
+    feat_series = pd.Series(feat)
+    all_data = computational_graph_degrees[hop]  # Use all data from the specified 'hop' index
     
-#     # Overlay Rectangles Plot onto the existing combined plot with circles
-#     combined_plot_with_rectangles = (combined_plot_corrected * rectangles_plot)
+    # Create a DataFrame for all nodes
+    df_all = pd.DataFrame({
+        'Attribute': feat_series,
+        '# of Neighbors': all_data,
+        'selected': 'Overall'  # This column specifies that the data represents overall distribution
+    })
     
-#     # Return the updated plot with rectangles as squares
-#     # return combined_plot_with_rectangles
-
-#     # Prepare data for transparent rectangles with black strokes
-#     transparent_rect_data = []
-#     x0 = 0  # Starting x-coordinate
-#     for width in all_ns:
-#         # Add a rectangle for each group, transparent fill and black stroke
-#         transparent_rect_data.append((x0, 0, x0 + width, n, 'black'))
-#         x0 += width
-
-#     # Convert transparent rectangle data into a DataFrame
-#     transparent_rect_df = pd.DataFrame(transparent_rect_data, columns=['x0', 'y0', 'x1', 'y1', 'Line_Color'])
-
-#     # Create Transparent Rectangles plot
-#     transparent_rectangles_plot = hv.Rectangles(transparent_rect_df, vdims=['Line_Color']).opts(
-#         fill_alpha=0,  # Set fill color to transparent
-#         line_color=hv.dim('Line_Color'),
-#         line_width=1,
-#         tools=[],
-#     )
+    # Copy selected nodes for a separate 'Selected' entry
+    df_selected = df_all.iloc[selected_nodes].copy()
+    df_selected['selected'] = 'Selected'
     
-#     # Overlay Transparent Rectangles onto the existing combined plot with rectangles
-#     final_combined_plot = (combined_plot_with_rectangles * transparent_rectangles_plot).opts(
-#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-#         invert_axes=True,
-#         framewise=True,
-#         shared_axes=False,
-#     ).redim.range(x=(-n_all_nodes / 10 - 5-2, n_all_nodes*1.1), y=(0, n+1))
+    # Concatenate the original and selected data
+    df_combined = pd.concat([df_all, df_selected], ignore_index=True)
     
-#     # Return the final combined plot
-#     # return final_combined_plot
-
-#     if x:
-#         if 0 <= x <= n:
-#             # Draw an arrow pointing downwards at the top of the plot
-#             # Since the plot is inverted, the top is actually on the right, before inverting
-#             arrow_y_position = n_all_nodes*1.02  # Adjust this value as needed to place the arrow correctly
-#             arrow = hv.Arrow(int(x)+0.5, arrow_y_position, direction='v', arrowstyle='-|>')
-
-#             # Overlay the Arrow on the Final Combined Plot
-#             final_plot_with_arrow = final_combined_plot * arrow
-#         else:
-#             final_plot_with_arrow = final_combined_plot * hv.Arrow(np.nan, np.nan)
-#     else:
-#         final_plot_with_arrow = final_combined_plot
-
-#     # Return the final plot with the arrow
-#     return final_plot_with_arrow
-
-
-def draw_attribute_view_correlation_violin(feat, individual_bias_metrics, selected_nodes):
-    x_data = feat[selected_nodes]
-    y_data = individual_bias_metrics[selected_nodes]
-    data = pd.DataFrame({'feat': x_data, 'metric': y_data})
-    violin_plot = hv.Violin(data, 'feat', 'metric').opts(
-        xlabel='Atribute', ylabel='Bias Contribution').opts(
-        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-        violin_fill_color=FILL_GREY_COLOR,
+    # Convert 'feat' to string for categorical x-axis
+    df_combined['Attribute'] = df_combined['Attribute'].astype(str)
+    
+    # Create the violin plot with the split condition
+    violin = hv.Violin(df_combined, ['selected', 'Attribute'], '# of Neighbors')
+    violin = violin.opts(opts.Violin(split=hv.dim('selected'))).opts(
+        show_legend=True, 
+        legend_position='top',
+        cmap=[BAR_COLOR1, BAR_COLOR0],
+        violin_line_color=None,
         framewise=True,
-        violin_line_color=None
-    ) 
+        shared_axes=False,
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)] 
+    )
 
-    return violin_plot 
+    return violin
+
+
+def draw_dependency_view_degree_sens(groups, computational_graph_degrees, selected_nodes, hop):
+    # Prepare the data
+    all_data = computational_graph_degrees[hop]  # Use all data from the specified 'hop' index
+    
+    # Create a DataFrame for all nodes
+    df_all = pd.DataFrame({
+        'Sensitive Group': groups,
+        '# of Neighbors': all_data,
+        'selected': 'Overall'  # This column specifies that the data represents overall distribution
+    })
+    
+    # Copy selected nodes for a separate 'Selected' entry
+    df_selected = df_all.iloc[selected_nodes].copy()
+    df_selected['selected'] = 'Selected'
+    
+    # Concatenate the original and selected data
+    df_combined = pd.concat([df_all, df_selected], ignore_index=True)
+    
+    # Convert 'feat' to string for categorical x-axis
+    df_combined['Sensitive Group'] = df_combined['Sensitive Group'].astype(str)
+    
+    # Create the violin plot with the split condition
+    violin = hv.Violin(df_combined, ['selected', 'Sensitive Group'], '# of Neighbors')
+    violin = violin.opts(opts.Violin(split=hv.dim('selected'))).opts(
+        show_legend=True, 
+        legend_position='top',
+        cmap=[BAR_COLOR1, BAR_COLOR0],
+        violin_line_color=None,
+        framewise=True,
+        shared_axes=False,
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)] 
+    )
+
+    return violin
+
+
+def draw_dependency_view_attr_sens_violin(feat, groups, selected_nodes):
+    # Prepare the data
+    groups_series = pd.Series(groups)
+    all_data = feat  # Use all data from the specified 'hop' index
+    
+    # Create a DataFrame for all nodes
+    df_all = pd.DataFrame({
+        'Sensitive Group': groups_series,
+        'Attribute': all_data,
+        'selected': 'Overall'  # This column specifies that the data represents overall distribution
+    })
+    
+    # Copy selected nodes for a separate 'Selected' entry
+    df_selected = df_all.iloc[selected_nodes].copy()
+    df_selected['selected'] = 'Selected'
+    
+    # Concatenate the original and selected data
+    df_combined = pd.concat([df_all, df_selected], ignore_index=True)
+
+    # Convert 'feat' to string for categorical x-axis
+    df_combined['Sensitive Group'] = df_combined['Sensitive Group'].astype(str)
+    
+    # Create the violin plot with the split condition
+    violin = hv.Violin(df_combined, ['selected', 'Sensitive Group'], 'Attribute')
+    violin = violin.opts(opts.Violin(split=hv.dim('selected'))).opts(
+        show_legend=True, 
+        legend_position='top',
+        cmap=[BAR_COLOR1, BAR_COLOR0],
+        violin_line_color=None,
+        framewise=True, 
+        shared_axes=False, 
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)]
+    )
+ 
+    return violin
+
+
+def draw_dependency_view_attr_degree_hex_all(feat, computational_graph_degrees, hop, gridsize=30):
+    return hv.HexTiles((feat, computational_graph_degrees[hop])).opts(opts.HexTiles(
+        framewise=True, 
+        gridsize=gridsize, 
+        tools=['hover'], 
+        colorbar=True)).opts(
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+        shared_axes=False,
+        xlabel='Attribute',
+        ylabel='# of Neighbors',
+        xrotation=90,
+        cmap=CONTINUOUS_CMAP
+    )
+ 
+
+def draw_dependency_view_attr_degree_scatter_selected(feat, computational_graph_degrees, hop, alpha, selected_nodes):
+    # convert alpha (an float np array) to boolean
+    alpha = alpha.astype(bool)
+    x_data = feat[alpha]
+    y_data = computational_graph_degrees[hop][alpha]
+    if len(selected_nodes) < len(feat):
+        return hv.Scatter((x_data, y_data)).opts(
+            opts.Scatter(size=5, 
+                        color=FILL_GREY_COLOR, 
+                        line_color=None, 
+                        fill_alpha=1, 
+                        framewise=True,
+                        shared_axes=False,
+                        )
+        )
+    else: 
+        return hv.Scatter([]).opts(
+            opts.Scatter(
+                        framewise=True,
+                        shared_axes=False,
+                        ) 
+        )
+
+
+def draw_dependency_view_attr_degree_hist_all(computational_graph_degrees, edges_ls, hop, node_mask, attr_val):
+    data = computational_graph_degrees[hop][node_mask]
+    edges = edges_ls[hop]
+    frequencies, edges = np.histogram(data, bins=edges)
+    hist = hv.Histogram((edges, frequencies)).opts(
+        xlabel='# of Neighbors',
+        ylabel=attr_val,
+        title='',
+        framewise=True,
+        shared_axes=False,
+        fill_alpha=0,
+        line_width=1.5,
+        line_alpha=1,
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+    )
+    return hist
+
+
+def draw_dependency_view_attr_degree_hist_selected(computational_graph_degrees, edges_ls, hop, 
+                                                   selected_nodes, node_mask, attr_val):
+    if len(selected_nodes) == 0:
+        data = computational_graph_degrees[hop][node_mask]
+    else:
+        node_mask = node_mask[selected_nodes]
+        data = computational_graph_degrees[hop][selected_nodes][node_mask]
+    edges = edges_ls[hop]
+    frequencies, edges = np.histogram(data, bins=edges)
+    hist = hv.Histogram((edges, frequencies)).opts(
+        xlabel='# of Neighbors',
+        ylabel=attr_val,
+        title='',
+        color=FILL_GREY_COLOR,
+        framewise=True,
+        shared_axes=False,
+        fill_alpha=1,
+        line_width=0,
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+    )
+    return hist
 
 
 def draw_attribute_view_correlation_hex(feat, individual_bias_metrics, selected_nodes, gridsize=30):
@@ -1616,69 +1015,6 @@ def draw_attribute_view_correlation_hex(feat, individual_bias_metrics, selected_
         xrotation=90,
         cmap=CONTINUOUS_CMAP
     )
-
-
-# def draw_fairness_metric_view_bar(labels, groups, selected_nodes, predictions): 
-#     sens = groups
-#     mask = selected_nodes
-#     predictions = predictions[mask]
-#     labels = labels[mask]
-#     sens = sens[mask]
-#     labeled_mask = labels != -1
-#     labeled_predictions = predictions[labeled_mask]
-#     labeled_labels = labels[labeled_mask]
-#     labeled_sens = sens[labeled_mask]
-
-#     letter_values = {
-#         ('SP', 'STD'): [node_classification.delta_std_sp(labeled_predictions, labeled_labels, labeled_sens), (0.0, 1.0)],
-#         ('SP', 'MAX'): [node_classification.delta_max_sp(labeled_predictions, labeled_labels, labeled_sens), (0.0, 1.0)],
-#         ('EOP', 'STD'): [node_classification.delta_std_eop(labeled_predictions, labeled_labels, labeled_sens), (0.0, 1.0)],
-#         ('EOP', 'MAX'): [node_classification.delta_max_eop(labeled_predictions, labeled_labels, labeled_sens), (0.0, 1.0)],
-#         ('EOD', 'STD'): [node_classification.delta_std_eod(labeled_predictions, labeled_labels, labeled_sens), (0.0, 1.0)],
-#         ('EOD', 'MAX'): [node_classification.delta_max_eod(labeled_predictions, labeled_labels, labeled_sens), (0.0, 1.0)],
-#         ('Acc', 'STD'): [node_classification.delta_std_acc(labeled_predictions, labeled_labels, labeled_sens), (0.0, 1.0)],
-#         ('Acc', 'MAX'): [node_classification.delta_max_acc(labeled_predictions, labeled_labels, labeled_sens), (0.0, 1.0)],
-#     }
-
-#     data = {
-#         'Metric Type': [],
-#         'Measurement Method': [],
-#         'Value': [],
-#         'Upper Bound': [],
-#     }
-#     label_data = {
-#         'x': [],
-#         'y': [],
-#         'text': [],
-#     }
-
-#     for (metric_type, measurement_method), [value, bounds] in letter_values.items():
-#         data['Metric Type'].append(metric_type)
-#         data['Measurement Method'].append(measurement_method)
-#         data['Value'].append(value)
-#         data['Upper Bound'].append(bounds[1])
-
-#     df = pd.DataFrame(data)
-
-#     range_bars = hv.Bars(df, ['Metric Type', 'Measurement Method'], 'Upper Bound').opts(
-#         hv.opts.Bars(fill_alpha=0, line_dash='dashed', line_width=1.5, stacked=False, invert_axes=True)
-#     )
-#     value_bars = hv.Bars(df, ['Metric Type', 'Measurement Method'], 'Value').opts(
-#         hv.opts.Bars(fill_color=FILL_GREY_COLOR, stacked=False, invert_axes=True, tools=['hover', 'tap'])
-#     )
-
-#     composite_chart = (range_bars * value_bars).opts(
-#         hv.opts.Overlay(show_legend=False),
-#     ).opts(
-#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-#         xlabel='Fairness Metric',
-#         ylabel='Value',
-#         ylim=(0, 1.05),
-#         xticks=[0, 0.2, 0.4, 0.6, 0.8, 1.0],
-#         shared_axes=False,
-#     )
-
-#     return composite_chart
 
 
 def draw_fairness_metric_view_value_bar(labels, groups, selected_nodes, predictions): 
@@ -1864,6 +1200,45 @@ def draw_fairness_metric_view_detail(metric_name, selected_nodes, groups, labels
     return chart
 
 
+def draw_structural_bias_overview_hist_all(frequencies_ls, edges_ls, hop):
+    frequencies = frequencies_ls[hop]
+    edges = edges_ls[hop]
+    hist = hv.Histogram((edges, frequencies)).opts(
+        xlabel='# of Neighbors',
+        ylabel='Frequency',
+        title='',
+        framewise=True,
+        shared_axes=False,
+        tools=['xbox_select'],
+        fill_alpha=0,
+        line_width=1.5,
+        line_alpha=1,
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+    )
+    return hist
+
+
+def draw_structural_bias_overview_hist_selected(computational_graph_degrees, edges_ls, hop, selected_nodes):
+    if len(selected_nodes) == 0:
+        data = computational_graph_degrees[hop]
+    else:
+        data = computational_graph_degrees[hop][selected_nodes]
+    edges = edges_ls[hop]
+    frequencies, edges = np.histogram(data, bins=edges)
+    hist = hv.Histogram((edges, frequencies)).opts(
+        xlabel='# of Neighbors',
+        ylabel='Frequency',
+        title='',
+        color=FILL_GREY_COLOR,
+        framewise=True,
+        shared_axes=False,
+        fill_alpha=1,
+        line_width=0,
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+    )
+    return hist
+
+
 def customize_unselected_glyph(plot, element):
     renderer = plot.state.renderers[-1]  # Get the last renderer, assuming it's your scatter plot
     # Adjusting non-selected glyph properties
@@ -1885,3 +1260,4 @@ def create_sector(center, radius, x_y_ratio, start_angle, end_angle, steps=100):
         points.append((x, y))
     points.append(center)
     return np.array(points)
+

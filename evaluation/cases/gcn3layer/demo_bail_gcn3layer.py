@@ -95,22 +95,22 @@ features = feature_norm(features)
 
 features = features.to(device)
 labels = labels.to(device)
-
 # if sens is a tensor, convert to numpy array
 if isinstance(sens, torch.Tensor):
     sens = sens.cpu().numpy()
 # if len(sens.shape) == 1:
 #     sens = sens.reshape(1, -1)
 # create a np array country with "US" for 1 and "oversea" for 0 in sens
-country = np.array(["US" if s == 1 else "Oversea" for s in sens])
-# get the index of "AGE" in feat_names
-age_idx = feat_names.index("AGE")
-age = features_orig[:, age_idx].cpu().numpy()
-# cut age into '<25', '25-30', '>=30'
-age_group = np.array(["<25" if a < 25 else "25-30" if a < 30 else ">=30" for a in age])
-# merge country and age_group into an array
-sens = np.stack([country, age_group], axis=1).T
-sens_names = ["Country", "Age"]
+race = np.array(["White" if s == 1 else "Other" for s in sens])
+# # get the index of "AGE" in feat_names
+# age_idx = feat_names.index("AGE")
+# age = features_orig[:, age_idx].cpu().numpy()
+# # cut age into '<25', '25-30', '>=30'
+# age_group = np.array(["<25" if a < 25 else "25-30" if a < 30 else ">=30" for a in age])
+# # merge country and age_group into an array
+# sens = np.stack([country, age_group], axis=1).T
+sens = np.stack([race], axis=1).T
+sens_names = ["Race"]
 # create GCN model
 in_size = features.shape[1]
 out_size = int(sum(labels.unique() != -1))

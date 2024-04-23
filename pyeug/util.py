@@ -403,21 +403,15 @@ def calc_metrics(embeddings, sens_names, sens, degree_boxes):
 
 
 def force_directed_layout_per_layer(G, layers, current_part, n_y_part, iterations=50, extra_layer=2, extra_layer_y=1):
-    # print('number of nodes in G in force_directed_layout_per_layer: ', len(G.nodes()))
-    # print('G.nodes: ', G.nodes())
     pos = {}
     # create a n by 2 np array, where n is the number of nodes in G
     # pos = np.zeros((len(G.nodes), 2))
     n_layers = len(layers)
     # n_rows_cols = math.ceil(math.sqrt(n_layers))
     for i, layer in enumerate(layers):
-        # print('nodes in layer: ', layer)
         layer_subgraph = G.subgraph(layer)
-        # print('nodes of layer_subgraph: ', layer_subgraph.nodes())
         layer_pos = nx.spring_layout(layer_subgraph, iterations=iterations)
-        # print('layer_pos: ', layer_pos)
         x_shift = -1 + 2 / n_layers * (i + 0.5)
-        # y_shift = 0
         y_shift = -1 + 2 / n_y_part * (current_part + 0.5)
         scaled_layer_pos = {k: [x + y for x, y in zip([v[0] / (n_layers + extra_layer), v[1] / (n_y_part + extra_layer_y)], [x_shift, y_shift])] for k, v in layer_pos.items()}
         pos.update(scaled_layer_pos)
@@ -426,74 +420,10 @@ def force_directed_layout_per_layer(G, layers, current_part, n_y_part, iteration
     return pos
 
 
-# def force_directed_layout_per_layer_old(G, layers, iterations=50, extra_layer=2):
-#     # print('number of nodes in G in force_directed_layout_per_layer: ', len(G.nodes()))
-#     # print('G.nodes: ', G.nodes())
-#     pos = {}
-#     # create a n by 2 np array, where n is the number of nodes in G
-#     # pos = np.zeros((len(G.nodes), 2))
-#     n_layers = len(layers)
-#     # n_rows_cols = math.ceil(math.sqrt(n_layers))
-#     for i, layer in enumerate(layers):
-#         # print('nodes in layer: ', layer)
-#         layer_subgraph = G.subgraph(layer)
-#         # print('nodes of layer_subgraph: ', layer_subgraph.nodes())
-#         layer_pos = nx.spring_layout(layer_subgraph, iterations=iterations)
-#         # print('layer_pos: ', layer_pos)
-#         x_shift = -1 + 2 / n_layers * (i + 0.5)
-#         y_shift = 0
-#         scaled_layer_pos = {k: [x + y for x, y in zip([v[0] / (n_layers + extra_layer), v[1]], [x_shift, y_shift])] for k, v in layer_pos.items()}
-#         pos.update(scaled_layer_pos)
-#         # for k, v in layer_pos.items():
-#             # find the index of k
-#     return pos
-
-
-# def hopwise_force_directed_layout_old(explain_induced_node_indices, explain_induced_node_hops, source_explained, target_explained,
-#     extra_layer=2):
-#     # create a graph
-#     G = nx.Graph()
-#     # add nodes
-#     G.add_nodes_from(explain_induced_node_indices)
-#     # add edges
-#     edges = np.stack((source_explained, target_explained), axis=1)
-#     G.add_edges_from(edges)
-#     # get the unique values of explain_induced_node_hops
-#     unique_hops = np.unique(explain_induced_node_hops)
-#     # create a list of lists, where each list contains the indices of nodes with the same hop
-#     layers = [explain_induced_node_indices[np.where(explain_induced_node_hops == hop)[0]] for hop in unique_hops]
-#     # if len(layers) > 0:
-#     #     print('len of explain_induced_node_indices: ', len(explain_induced_node_indices))
-#     #     print('len of unique values in explain_induced_node_indices: ', len(np.unique(explain_induced_node_indices)))
-#     #     print('len of flattened layers: ', sum([len(layer) for layer in layers]))
-#     #     print('len of unique values in layers: ', len(np.unique(np.concatenate(layers))))
-#     #     print('number of nodes in G: ', len(G.nodes()))
-#     # print('layers in hopwise_force_directed_layout: ', layers)
-#     pos = force_directed_layout_per_layer(G, layers, extra_layer)
-#     # create a n by 2 np array, where n is the number of rows in explain_induced_node_indices
-#     ret = np.zeros((explain_induced_node_indices.shape[0], 2))
-#     # print(ret.shape)
-#     # find the index of each key of pos in explain_induced_node_indices
-#     # print('the number of elements in pos: ', len(pos))
-#     # print('len of explain_induced_node_indices: ', len(explain_induced_node_indices))
-#     # print('pos: ', pos)
-#     # print('explain_induced_node_indices: ', explain_induced_node_indices)
-#     for k, v in pos.items():
-#         i = np.where(explain_induced_node_indices == k)[0][0]
-#         ret[i] = v
-
-#     unique_hops_max = unique_hops.max() if len(unique_hops) else -1
-#     if len(ret):
-#         return ret[: , 0], ret[: , 1], unique_hops_max
-#     else:
-#         return np.array([]), np.array([]), unique_hops_max
-
-
 def hopwise_force_directed_layout(explain_induced_node_indices, explain_induced_node_hops, 
     explain_induced_node_indices_unfair_pure, explain_induced_node_indices_fair_pure, explain_induced_node_indices_intersection, 
     source_explained, target_explained,
     extra_layer=2):
-    print('the node ids in 0 hop: ', explain_induced_node_indices[explain_induced_node_hops == 0])
 
     # Create masks for both columns using logical indexing
     mask_source_unfair = np.isin(source_explained, explain_induced_node_indices_unfair_pure)
@@ -656,23 +586,17 @@ def calculate_graph_metrics(adj_matrices):
     metrics = []
 
     for adj_matrix in adj_matrices:
-        # print('adj_matrix: ', adj_matrix)
-        # print(adj_matrix.todense())
         # Number of edges: sum of non-zero elements in the matrix
         num_edges = adj_matrix.nnz // 2  # Dividing by 2 for undirected graph
-        # print('num_edges: ', num_edges)
 
         # Number of nodes: dimension of the matrix
         num_nodes = adj_matrix.shape[0]
-        # print('num_nodes: ', num_nodes)
 
         # Maximum possible number of edges in an undirected graph
         max_edges = num_nodes * (num_nodes - 1) // 2
-        # print('max_edges: ', max_edges)
 
         # Density: Actual edges / Maximum possible edges
         density = num_edges / max_edges if max_edges > 0 else 0
-        # print('density: ', density)
         metrics.append((num_nodes, density))
 
     return metrics
@@ -738,7 +662,7 @@ def calculate_graph_metrics(adj_matrices):
 #     return bias_indicator, overall_bias_indicator, ns
 
 def analyze_bias(feat, groups, columns_categorical, selected_nodes):
-    n, m = feat.shape
+    m = feat.shape[-1]
 
     # Identify all unique groups in the dataset
     all_value_counts = groups.value_counts()
@@ -765,7 +689,7 @@ def analyze_bias(feat, groups, columns_categorical, selected_nodes):
     overall_bias_indicator = np.zeros(m, dtype=bool)
 
     if num_groups > 1:
-        for i in range(m):
+        for i in tqdm(range(m)):
             variable_data = feat_selected.iloc[:, i]
             if columns_categorical[i]:  # If the column is categorical
                 contingency_table = pd.crosstab(variable_data, groups_selected)
