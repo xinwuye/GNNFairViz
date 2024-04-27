@@ -519,6 +519,7 @@ def check_unique_values(arr):
 
 # Function to modify the sparse tensor using SciPy
 def modify_sparse_tensor_scipy(adj):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     adj = adj.clone().coalesce()  # Ensure indices are sorted and duplicate indices are combined
     # Convert PyTorch sparse tensor to SciPy COO matrix
     indices = adj.indices().numpy()
@@ -557,7 +558,7 @@ def modify_sparse_tensor_scipy(adj):
         # Then, use this numpy array to create the PyTorch tensor.
         modified_adj = torch.sparse_coo_tensor(torch.LongTensor(rows_cols_combined), 
                                             torch.FloatTensor(modified_scipy_adj_coo.data), modified_scipy_adj_coo.shape)
-        return modified_adj, adj, modified_scipy_adj, scipy_adj
+        return modified_adj.to(device), adj, modified_scipy_adj, scipy_adj
     else:
         modified_scipy_adj.setdiag(1)
         # to coo
@@ -573,7 +574,7 @@ def modify_sparse_tensor_scipy(adj):
         # Then, use this numpy array to create the PyTorch tensor.
         modified_adj = torch.sparse_coo_tensor(torch.LongTensor(rows_cols_combined), 
                                             torch.FloatTensor(modified_scipy_adj_coo.data), modified_scipy_adj_coo.shape)
-        return adj, modified_adj, scipy_adj, modified_scipy_adj
+        return adj, modified_adj.to(device), scipy_adj, modified_scipy_adj
 
 
 def calculate_graph_metrics(adj_matrices):

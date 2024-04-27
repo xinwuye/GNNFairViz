@@ -451,6 +451,84 @@ def draw_attribute_view_violin(variable_data, feat_name, groups, selected_nodes)
     return violin
 
 
+# def draw_dependency_view_attr_sens_bar_all(variable_data, feat_name, groups):
+#     # Ensure variable_data and groups are pandas Series with the same length
+#     if isinstance(variable_data, np.ndarray):
+#         variable_data = pd.Series(variable_data, name=feat_name)
+#     if isinstance(groups, np.ndarray): 
+#         groups = pd.Series(groups, name="Group")
+
+#     # convert variable_data to string
+#     variable_data = variable_data.astype(str)
+
+#     # create a column count with the same length as variable_data and all values are 1
+#     count = np.ones(len(variable_data))
+#     # create a DataFrame with variable_data, groups, and count
+#     df = pd.DataFrame({feat_name: variable_data, 'Group': groups, 'Count': count})
+#     # group by feat_name and 'Group' and sum the count, and get the max count as ymax
+#     aggregated_df = df.groupby([feat_name, 'Group']).sum().reset_index()
+#     ymax = aggregated_df['Count'].max() * 1.05
+
+#     # # Create the bar chart
+#     # bars = hv.Bars(aggregated_df, ['Group', feat_name], 'Count').opts(
+#     bars = hv.Bars(df, ['Group', feat_name], 'Count').aggregate(function=np.sum).opts(
+#         stacked=False, 
+#         xlabel='Sensitive Group', ylabel='Count',
+#         shared_axes=False,
+#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+#         ylim=(0, ymax),
+#         # invert_axes=True,
+#         multi_level=False,
+#         show_legend=False,
+#         fill_alpha=0,
+#         line_width=1.5,
+#         # put toolbar on the top
+#         toolbar='above', 
+#         xrotation=90,
+#     )
+#     print('in draw_dependency_view_attr_sens_bar_all')
+
+#     return bars
+
+
+# def draw_dependency_view_attr_sens_bar_selected(variable_data, feat_name, groups, selected_nodes):
+#     # Ensure variable_data and groups are pandas Series with the same length
+#     if isinstance(variable_data, np.ndarray):
+#         variable_data = pd.Series(variable_data, name=feat_name)
+#     if isinstance(groups, np.ndarray): 
+#         groups = pd.Series(groups, name="Group")
+
+#     variable_data = variable_data.iloc[selected_nodes]
+#     # convert variable_data to string
+#     variable_data = variable_data.astype(str)
+#     groups = groups.iloc[selected_nodes]
+
+#     # create a column count with the same length as variable_data and all values are 1
+#     count = np.ones(len(variable_data))
+#     # create a DataFrame with variable_data, groups, and count
+#     df = pd.DataFrame({feat_name: variable_data, 'Group': groups, 'Count': count})
+
+#     # # Create the bar chart
+#     # bars = hv.Bars(aggregated_df, ['Group', feat_name], 'Count').opts(
+#     bars = hv.Bars(df, ['Group', feat_name], 'Count').aggregate(function=np.sum).opts(
+#         # stacked=False, 
+#         xlabel='Sensitive Group', ylabel='Count',
+#         shared_axes=False,
+#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+#         # invert_axes=True,
+#         multi_level=False,
+#         # put toolbar on the top
+#         toolbar='above',
+#         line_color=None,
+#         fill_alpha=1,
+#         fill_color=FILL_GREY_COLOR,
+#         show_legend=False, 
+#         xrotation=90,
+#     )
+
+#     return bars
+
+
 def draw_dependency_view_attr_sens_bar_all(variable_data, feat_name, groups):
     # Ensure variable_data and groups are pandas Series with the same length
     if isinstance(variable_data, np.ndarray):
@@ -458,21 +536,27 @@ def draw_dependency_view_attr_sens_bar_all(variable_data, feat_name, groups):
     if isinstance(groups, np.ndarray): 
         groups = pd.Series(groups, name="Group")
 
-    # convert variable_data to string
+    # Convert variable_data to string to ensure proper concatenation
     variable_data = variable_data.astype(str)
+    groups = groups.astype(str)
 
-    # create a column count with the same length as variable_data and all values are 1
-    count = np.ones(len(variable_data))
-    # create a DataFrame with variable_data, groups, and count
-    df = pd.DataFrame({feat_name: variable_data, 'Group': groups, 'Count': count})
+    # Concatenate groups and variable_data into a new column
+    df = pd.DataFrame({feat_name: variable_data, 'Group': groups})
+    df['Sensitive Group(Attr.)'] = df['Group'] + '(' + df[feat_name] + ')'
 
-    # # Create the bar chart
-    # bars = hv.Bars(aggregated_df, ['Group', feat_name], 'Count').opts(
-    bars = hv.Bars(df, ['Group', feat_name], 'Count').aggregate(function=np.sum).opts(
-        stacked=False, 
-        xlabel='Sensitive Group', ylabel='Count',
+    # Create a count column
+    df['Count'] = 1
+
+    # Group by the new concatenated column and sum the count
+    aggregated_df = df.groupby('Sensitive Group(Attr.)').sum().reset_index()
+    ymax = aggregated_df['Count'].max() * 1.05
+
+    # Create the bar chart using Holoviews
+    bars = hv.Bars(aggregated_df, 'Sensitive Group(Attr.)', 'Count').opts(
+        xlabel='Sensitive Group(Attribute)', ylabel='Count',
         shared_axes=False,
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+        ylim=(0, ymax),
         invert_axes=True,
         multi_level=False,
         show_legend=False,
@@ -481,7 +565,6 @@ def draw_dependency_view_attr_sens_bar_all(variable_data, feat_name, groups):
         # put toolbar on the top
         toolbar='above', 
     )
-    print('in draw_dependency_view_attr_sens_bar_all')
 
     return bars
 
@@ -493,24 +576,30 @@ def draw_dependency_view_attr_sens_bar_selected(variable_data, feat_name, groups
     if isinstance(groups, np.ndarray): 
         groups = pd.Series(groups, name="Group")
 
+    # Select the specified nodes
     variable_data = variable_data.iloc[selected_nodes]
-    # convert variable_data to string
-    variable_data = variable_data.astype(str)
     groups = groups.iloc[selected_nodes]
 
-    # create a column count with the same length as variable_data and all values are 1
-    count = np.ones(len(variable_data))
-    # create a DataFrame with variable_data, groups, and count
-    df = pd.DataFrame({feat_name: variable_data, 'Group': groups, 'Count': count})
+    # Convert variable_data and groups to string to ensure proper concatenation
+    variable_data = variable_data.astype(str)
+    groups = groups.astype(str)
 
-    # # Create the bar chart
-    # bars = hv.Bars(aggregated_df, ['Group', feat_name], 'Count').opts(
-    bars = hv.Bars(df, ['Group', feat_name], 'Count').aggregate(function=np.sum).opts(
-        stacked=False, 
-        xlabel='Sensitive Group', ylabel='Count',
+    # Concatenate groups and variable_data into a new column
+    df = pd.DataFrame({feat_name: variable_data, 'Group': groups})
+    df['Sensitive Group(Attr.)'] = df['Group'] + '(' + df[feat_name] + ')'
+
+    # Create a count column with the same length as variable_data and all values are 1
+    df['Count'] = 1
+
+    # Group by the new concatenated column and sum the count
+    aggregated_df = df.groupby('Sensitive Group(Attr.)').sum().reset_index()
+
+    # Create the bar chart using Holoviews
+    bars = hv.Bars(aggregated_df, 'Sensitive Group(Attr.)', 'Count').opts(
+        xlabel='Sensitive Group(Attribute)', ylabel='Count',
         shared_axes=False,
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-        invert_axes=True,
+        # invert_axes=True,
         multi_level=False,
         # put toolbar on the top
         toolbar='above',
@@ -518,6 +607,7 @@ def draw_dependency_view_attr_sens_bar_selected(variable_data, feat_name, groups
         fill_alpha=1,
         fill_color=FILL_GREY_COLOR,
         show_legend=False, 
+        xrotation=90,
     )
 
     return bars
@@ -623,7 +713,7 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
     column_centers = [sum(all_ns[:i+1]) - all_ns[i]/2 for i in range(m)]
     # create yticks using column_centers and all_unique_groups
     yticks = [(c, all_unique_groups[i]) for i, c in enumerate(column_centers)]
-    custom_hover = HoverTool(tooltips=[('Attr.:', '@{ID}')])
+    # custom_hover = HoverTool(tooltips=[('Attr.:', '@{ID}')])
     # Create the Rectangles plot
     plot = hv.Rectangles(rect_data, vdims=['Color', 'ID']).opts(
         opts.Rectangles(
@@ -639,7 +729,7 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
                         yticks=yticks,
                         line_width=0.1,
                         framewise=True,
-                        tools=[custom_hover]
+                        # tools=[custom_hover]
                         ))  # Column tick labels
     
     # glyph plot
@@ -658,7 +748,8 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
     circle_x = -circle_gap / 2 * x_y_ratio
 
     # contributions is a 1d np array, get the max absolute value
-    print(contributions_selected_attrs)
+    # print('contributions_selected_attrs: ', contributions_selected_attrs)
+    # print('contributions: ', contributions)
     contributions_selected_attrs = np.array(contributions_selected_attrs)
     max_contrib = np.max(np.concatenate([np.abs(contributions), np.abs(contributions_selected_attrs)]))
     # Normalize contributions to [-1, 1] 
@@ -690,10 +781,10 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
         e_data = {('x', 'y'): e.array(), 'color': color}
         ellipse_data.append(e_data)
 
-        # ellipse2: just white
-        e = hv.Ellipse(circle_x, i + 0.5, (x_y_ratio * r_ellipse2, r_ellipse2))
-        e_data = {('x', 'y'): e.array(), 'color': 'white'}
-        ellipse_data.append(e_data)
+        # # ellipse2: just white
+        # e = hv.Ellipse(circle_x, i + 0.5, (x_y_ratio * r_ellipse2, r_ellipse2))
+        # e_data = {('x', 'y'): e.array(), 'color': 'white'}
+        # ellipse_data.append(e_data)
 
         # transparent circle for hovering
         trans_circle = hv.Ellipse(circle_x, i + 0.5, (x_y_ratio * r_trans_circle, r_trans_circle))
@@ -704,6 +795,7 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
         hover_data.append(trans_circle_data)
 
     x_data = []
+    hover_data1 = []
     for i, selected_attrs in enumerate(selected_attrs_ls):
         # attr selection circles
         x_pos = circle_x - circle_gap * x_y_ratio * (i + 1)
@@ -722,6 +814,12 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
             e = hv.Ellipse(x_pos, y_pos, (x_y_ratio * r_selected_attr_circle, r_selected_attr_circle))
             e_data = {('x', 'y'): e.array(), 'color': 'black'} 
             ellipse_data.append(e_data)
+            # transparent circle for hovering
+            trans_circle = hv.Ellipse(x_pos, y_pos, (x_y_ratio * r_trans_circle, r_trans_circle))
+            trans_circle_data = {('x', 'y'): trans_circle.array(),
+                                'Bias Contribution': contributions_selected_attrs[i],
+                                }
+            hover_data1.append(trans_circle_data)
 
         # xs
         x_h_line = x_pos + circle_gap * x_y_ratio / 2
@@ -757,6 +855,13 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
         tools=['hover'], 
         framewise=True,
     )
+    trans_circles1 = hv.Polygons(hover_data1, 
+                                vdims=['Bias Contribution', ]).opts(
+        fill_alpha=0,
+        line_width=0, 
+        tools=['hover'], 
+        framewise=True,
+    )
 
     # Prepare data for transparent rectangles with black strokes
     transparent_rect_data = []
@@ -779,7 +884,7 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
     ) 
     
     # Overlay Transparent Rectangles onto the existing combined plot with rectangles
-    final_combined_plot = (plot * glyph_plot * x_plot * transparent_rectangles_plot * trans_circles)
+    final_combined_plot = (plot * glyph_plot * x_plot * transparent_rectangles_plot * trans_circles * trans_circles1)
     
     # Return the final combined plot
     # return final_combined_plot
@@ -806,14 +911,17 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
         framewise=True,
         shared_axes=False,
         xlim=(xmin, xmax),
-        ylim=(ymin, ymax) 
+        ylim=(ymin, ymax),
+        tools=[] 
     )
 
 
-def draw_dependency_view_attr_degree_violin(feat, computational_graph_degrees, selected_nodes, hop):
+def draw_dependency_view_attr_degree_violin(feat, computational_graph_degrees, selected_nodes, hop, scale):
     # Prepare the data
     feat_series = pd.Series(feat)
     all_data = computational_graph_degrees[hop]  # Use all data from the specified 'hop' index
+    if scale == 'Log':
+        all_data = np.log(all_data + 1)
     
     # Create a DataFrame for all nodes
     df_all = pd.DataFrame({
@@ -835,21 +943,25 @@ def draw_dependency_view_attr_degree_violin(feat, computational_graph_degrees, s
     # Create the violin plot with the split condition
     violin = hv.Violin(df_combined, ['selected', 'Attribute'], '# of Neighbors')
     violin = violin.opts(opts.Violin(split=hv.dim('selected'))).opts(
+        ylabel='# of Neighbors' if scale == 'Original' else 'Log(# of Neighbors)',
         show_legend=True, 
         legend_position='top',
         cmap=[BAR_COLOR1, BAR_COLOR0],
         violin_line_color=None,
         framewise=True,
         shared_axes=False,
+        invert_axes=True,
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)] 
     )
 
     return violin
 
 
-def draw_dependency_view_degree_sens(groups, computational_graph_degrees, selected_nodes, hop):
+def draw_dependency_view_degree_sens(groups, computational_graph_degrees, selected_nodes, hop, scale):
     # Prepare the data
     all_data = computational_graph_degrees[hop]  # Use all data from the specified 'hop' index
+    if scale == 'Log':
+        all_data = np.log(all_data + 1)
     
     # Create a DataFrame for all nodes
     df_all = pd.DataFrame({
@@ -871,11 +983,13 @@ def draw_dependency_view_degree_sens(groups, computational_graph_degrees, select
     # Create the violin plot with the split condition
     violin = hv.Violin(df_combined, ['selected', 'Sensitive Group'], '# of Neighbors')
     violin = violin.opts(opts.Violin(split=hv.dim('selected'))).opts(
+        ylabel='# of Neighbors' if scale == 'Original' else 'Log(# of Neighbors)',
         show_legend=True, 
         legend_position='top',
         cmap=[BAR_COLOR1, BAR_COLOR0],
         violin_line_color=None,
         framewise=True,
+        invert_axes=True,
         shared_axes=False,
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)] 
     )
@@ -913,6 +1027,7 @@ def draw_dependency_view_attr_sens_violin(feat, groups, selected_nodes):
         cmap=[BAR_COLOR1, BAR_COLOR0],
         violin_line_color=None,
         framewise=True, 
+        invert_axes=True,
         shared_axes=False, 
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)]
     )
@@ -920,8 +1035,12 @@ def draw_dependency_view_attr_sens_violin(feat, groups, selected_nodes):
     return violin
 
 
-def draw_dependency_view_attr_degree_hex_all(feat, computational_graph_degrees, hop, gridsize=30):
-    return hv.HexTiles((feat, computational_graph_degrees[hop])).opts(opts.HexTiles(
+def draw_dependency_view_attr_degree_hex_all(feat, computational_graph_degrees, hop, scale, gridsize=30):
+    # Prepare the data
+    all_data = computational_graph_degrees[hop]  # Use all data from the specified 'hop' index
+    if scale == 'Log':
+        all_data = np.log(all_data + 1)
+    return hv.HexTiles((feat, all_data)).opts(opts.HexTiles(
         framewise=True, 
         gridsize=gridsize, 
         tools=['hover'], 
@@ -929,17 +1048,20 @@ def draw_dependency_view_attr_degree_hex_all(feat, computational_graph_degrees, 
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
         shared_axes=False,
         xlabel='Attribute',
-        ylabel='# of Neighbors',
+        ylabel='# of Neighbors' if scale == 'Original' else 'Log(# of Neighbors)',
         xrotation=90,
         cmap=CONTINUOUS_CMAP
     )
  
 
-def draw_dependency_view_attr_degree_scatter_selected(feat, computational_graph_degrees, hop, alpha, selected_nodes):
+def draw_dependency_view_attr_degree_scatter_selected(feat, computational_graph_degrees, 
+                                                      hop, alpha, selected_nodes, scale):
     # convert alpha (an float np array) to boolean
     alpha = alpha.astype(bool)
     x_data = feat[alpha]
     y_data = computational_graph_degrees[hop][alpha]
+    if scale == 'Log':
+        y_data = np.log(y_data + 1)
     if len(selected_nodes) < len(feat):
         return hv.Scatter((x_data, y_data)).opts(
             opts.Scatter(size=5, 
@@ -948,6 +1070,7 @@ def draw_dependency_view_attr_degree_scatter_selected(feat, computational_graph_
                         fill_alpha=1, 
                         framewise=True,
                         shared_axes=False,
+                        ylabel='# of Neighbors' if scale == 'Original' else 'Log(# of Neighbors)',
                         )
         )
     else: 
@@ -955,49 +1078,50 @@ def draw_dependency_view_attr_degree_scatter_selected(feat, computational_graph_
             opts.Scatter(
                         framewise=True,
                         shared_axes=False,
+                        ylabel='# of Neighbors' if scale == 'Original' else 'Log(# of Neighbors)',
                         ) 
         )
 
 
-def draw_dependency_view_attr_degree_hist_all(computational_graph_degrees, edges_ls, hop, node_mask, attr_val):
-    data = computational_graph_degrees[hop][node_mask]
-    edges = edges_ls[hop]
-    frequencies, edges = np.histogram(data, bins=edges)
-    hist = hv.Histogram((edges, frequencies)).opts(
-        xlabel='# of Neighbors',
-        ylabel=attr_val,
-        title='',
-        framewise=True,
-        shared_axes=False,
-        fill_alpha=0,
-        line_width=1.5,
-        line_alpha=1,
-        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-    )
-    return hist
+# def draw_dependency_view_attr_degree_hist_all(computational_graph_degrees, edges_ls, hop, node_mask, attr_val):
+#     data = computational_graph_degrees[hop][node_mask]
+#     edges = edges_ls[hop]
+#     frequencies, edges = np.histogram(data, bins=edges)
+#     hist = hv.Histogram((edges, frequencies)).opts(
+#         xlabel='# of Neighbors',
+#         ylabel=attr_val,
+#         title='',
+#         framewise=True,
+#         shared_axes=False,
+#         fill_alpha=0,
+#         line_width=1.5,
+#         line_alpha=1,
+#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+#     )
+#     return hist
 
 
-def draw_dependency_view_attr_degree_hist_selected(computational_graph_degrees, edges_ls, hop, 
-                                                   selected_nodes, node_mask, attr_val):
-    if len(selected_nodes) == 0:
-        data = computational_graph_degrees[hop][node_mask]
-    else:
-        node_mask = node_mask[selected_nodes]
-        data = computational_graph_degrees[hop][selected_nodes][node_mask]
-    edges = edges_ls[hop]
-    frequencies, edges = np.histogram(data, bins=edges)
-    hist = hv.Histogram((edges, frequencies)).opts(
-        xlabel='# of Neighbors',
-        ylabel=attr_val,
-        title='',
-        color=FILL_GREY_COLOR,
-        framewise=True,
-        shared_axes=False,
-        fill_alpha=1,
-        line_width=0,
-        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-    )
-    return hist
+# def draw_dependency_view_attr_degree_hist_selected(computational_graph_degrees, edges_ls, hop, 
+#                                                    selected_nodes, node_mask, attr_val):
+#     if len(selected_nodes) == 0:
+#         data = computational_graph_degrees[hop][node_mask]
+#     else:
+#         node_mask = node_mask[selected_nodes]
+#         data = computational_graph_degrees[hop][selected_nodes][node_mask]
+#     edges = edges_ls[hop]
+#     frequencies, edges = np.histogram(data, bins=edges)
+#     hist = hv.Histogram((edges, frequencies)).opts(
+#         xlabel='# of Neighbors',
+#         ylabel=attr_val,
+#         title='',
+#         color=FILL_GREY_COLOR,
+#         framewise=True,
+#         shared_axes=False,
+#         fill_alpha=1,
+#         line_width=0,
+#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+#     )
+#     return hist
 
 
 def draw_attribute_view_correlation_hex(feat, individual_bias_metrics, selected_nodes, gridsize=30):
@@ -1200,11 +1324,11 @@ def draw_fairness_metric_view_detail(metric_name, selected_nodes, groups, labels
     return chart
 
 
-def draw_structural_bias_overview_hist_all(frequencies_ls, edges_ls, hop):
-    frequencies = frequencies_ls[hop]
-    edges = edges_ls[hop]
+def draw_structural_bias_overview_hist_all(frequencies_dict, edges_dict, hop, scale):
+    frequencies = frequencies_dict[scale][hop]
+    edges = edges_dict[scale][hop]
     hist = hv.Histogram((edges, frequencies)).opts(
-        xlabel='# of Neighbors',
+        xlabel='# of Neighbors' if scale == 'Original' else 'Log(# of Neighbors)',
         ylabel='Frequency',
         title='',
         framewise=True,
@@ -1218,15 +1342,19 @@ def draw_structural_bias_overview_hist_all(frequencies_ls, edges_ls, hop):
     return hist
 
 
-def draw_structural_bias_overview_hist_selected(computational_graph_degrees, edges_ls, hop, selected_nodes):
+def draw_structural_bias_overview_hist_selected(computational_graph_degrees, edges_dict, hop, 
+                                                selected_nodes,
+                                                scale):
     if len(selected_nodes) == 0:
         data = computational_graph_degrees[hop]
     else:
         data = computational_graph_degrees[hop][selected_nodes]
-    edges = edges_ls[hop]
+    if scale == 'Log':
+        data = np.log(data + 1)
+    edges = edges_dict[scale][hop]
     frequencies, edges = np.histogram(data, bins=edges)
     hist = hv.Histogram((edges, frequencies)).opts(
-        xlabel='# of Neighbors',
+        xlabel='# of Neighbors' if scale == 'Original' else 'Log(# of Neighbors)',
         ylabel='Frequency',
         title='',
         color=FILL_GREY_COLOR,

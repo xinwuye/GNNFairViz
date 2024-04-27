@@ -132,19 +132,19 @@ class SelectedAttrsLs(Stream):
 class EUG:
     def __init__(self, model, adj, feat, sens, sens_names, max_hop, masks, 
                  labels, emb_fnc, perplexity=PERPLEXITY, feat_names=None):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # if feat_names is None
         if feat_names is None:
             self.feat_names = np.array([str(i) for i in range(feat.shape[-1])])
         else:
             self.feat_names = feat_names
         # self.model = copy.deepcopy(model)        
-        self.model = model
+        self.model = model.to(device)
         self.model.eval()
-        self.adj = adj
+        self.adj = adj.to(device)
         self.adj_mul_indices = []
         self.adj0, self.adj1, self.adj0_scipy, self.adj1_scipy = util.modify_sparse_tensor_scipy(adj)
-        print(self.adj0)
-        self.feat = feat
+        self.feat = feat.to(device)
         self.n_feat = feat.shape[-1]
         self.sens = sens
         self.groups_stream = Groups(groups=self.sens[0])
@@ -313,6 +313,8 @@ class EUG:
         node_selection_confirm_control_panel_button.on_click(self._node_selection_confirm_control_panel_button_callback)
         node_selection_clear_control_panel_button = pn.widgets.Button(name='Clear', button_type='default')
         node_selection_clear_control_panel_button.on_click(self._node_selection_clear_control_panel_button_callback)
+        self.n_neighbors_scale_group = pn.widgets.RadioButtonGroup(options=['Original', 'Log'], value='Original', button_type='default')
+        # self.n_neighbors_scale_group.param.watch(self._n_neighbors_scale_group_callback, 'value')
 
         # widget for fairness metric view
         # a multi-select widget for selecting "train", "val", "test", "other"
@@ -321,6 +323,9 @@ class EUG:
             width=int(self.control_panel_width*0.63),
             )
         self.previous_data_selector_value = self.data_selector.value
+
+        # latex for number of selected nodes
+        self.n_selected_nodes_latex = pn.pane.LaTeX(f'# of Selected Nodes: {self.n_nodes}/{self.n_nodes} (100%)')
 
 ### graph view
         # wh_graph_view = min(width/3, height/2-115)
@@ -539,8 +544,8 @@ class EUG:
 
 ### correlation view
         print('reach correlation view')
-        self.contributions_selected_nodes_stream = ContributionsSelectedNodes()
-        self.contributions_selected_nodes_stream.add_subscriber(self._contributions_selected_nodes_stream_subscriber)
+        # self.contributions_selected_nodes_stream = ContributionsSelectedNodes()
+        # self.contributions_selected_nodes_stream.add_subscriber(self._contributions_selected_nodes_stream_subscriber)
         # feat_train = self.feat[self.train_mask].cpu().numpy()
         feat_np = self.feat.cpu().numpy()
 
@@ -549,9 +554,9 @@ class EUG:
                                                             width=int(self.correlation_view_width*0.93),
             )
 
-        self.correlation_view_latex1 = pn.pane.LaTeX('Bias Contributions')
+        # self.correlation_view_latex1 = pn.pane.LaTeX('Bias Contributions')
 
-        self.correlation_view_latex2 = pn.pane.LaTeX('0.00%') 
+        # self.correlation_view_latex2 = pn.pane.LaTeX('0.00%') 
         print('correlation view is fine')  
 
 ### attribute view
@@ -617,7 +622,8 @@ class EUG:
 
         self.dependency_view_degree_sens = hv.DynamicMap(pn.bind(draw.draw_dependency_view_degree_sens,
                                                                  computational_graph_degrees=self.computational_graph_degrees,
-                                                                 hop=self.correlation_view_selection),
+                                                                 hop=self.correlation_view_selection,
+                                                                 scale=self.n_neighbors_scale_group,),
                                                                  streams=[self.selected_nodes_stream,
                                                                           self.groups_stream,]).opts(
                                                                               height=int(self.diagnostic_panel_height*0.45),
@@ -626,16 +632,32 @@ class EUG:
 
 ### density view
         # Create the scatter plot
+
+        # v slow
+        # print('reach process graph')
+        # self.extract_communities_args = community.process_graph(self.adj0)
+        # print('process graph is fine')
+        # self._save_extract_communities_args()
+        # loaded_extract_communities_args = self._load_extract_communities_args()
+        # # deep copy self.extract_communities_args, which is a tuple
+        # self.node_communities = community.extract_communities(
+        #                                                     # community.Tree(), 
+        #     self.extract_communities_args[0], 
+        #                                                     #   *loaded_extract_communities_args, 
+        #                                                     #   loaded_extract_communities_args[0], 
+        #                                                     #   loaded_extract_communities_args[1], 
+        #                                                     self.extract_communities_args[1], 
+        #                                                     self.extract_communities_args[2], 
+        #                                                     self.extract_communities_args[3], 
+        #                                                       0.5)
+        # print('communities is fine')
+
+        # v fast
         print('reach process graph')
         self.extract_communities_args = community.process_graph(self.adj0)
         print('process graph is fine')
-        self._save_extract_communities_args()
-        loaded_extract_communities_args = self._load_extract_communities_args()
         # deep copy self.extract_communities_args, which is a tuple
-        self.node_communities = community.extract_communities(community.Tree(), 
-                                                              *loaded_extract_communities_args, 
-                                                            #   self.adj0, 
-                                                            self.extract_communities_args[3],
+        self.node_communities = community.extract_communities(self.extract_communities_args,
                                                               0.5)
         print('communities is fine')
 
@@ -708,6 +730,33 @@ class EUG:
         self.new_selection_button = pn.widgets.Button(name='New Selection')
         self.new_selection_button.on_click(self._new_selection_button_callback)
 
+        contribution_attrs = individual_bias.calc_attr_contributions(
+            model=self.model,
+            g=self.g, 
+            feat=self.feat,
+            selected_nodes=self.selected_nodes_stream.selected_nodes,
+            groups=self.groups_stream.groups,
+            attr_indices=list(range(self.n_feat))
+        )
+        contribution_structure = individual_bias.calc_structure_contribution(
+            adj=self.adj,
+            model=self.model,
+            g=self.g, 
+            feat=self.feat,
+            selected_nodes=self.selected_nodes_stream.selected_nodes,
+            groups=self.groups_stream.groups,
+        )
+
+        self.bias_contributions_nodes = 1
+        self.bias_contributions_attrs = contribution_attrs
+        self.bias_contributions_structure = contribution_structure
+        self.bias_contributions_emb = 1
+
+        self.bias_contributions_nodes_latex = pn.pane.LaTeX('Nodes: 1')
+        self.bias_contributions_attrs_latex = pn.pane.LaTeX(f'Attributes: {contribution_attrs:.4f}')
+        self.bias_contributions_structure_latex = pn.pane.LaTeX(f'Structure: {contribution_structure:.4f}')
+        self.bias_contributions_emb_latex = pn.pane.LaTeX(f'Embeddings: 1')
+
         self.attribute_view_overview.opts(
             height=int(self.diagnostic_panel_height*0.5),
             width=int(self.diagnostic_panel_width*0.83),
@@ -715,8 +764,14 @@ class EUG:
         self.diagnostic_panel = pn.Card(
             pn.Row(
                 pn.Column(
+                    '#### Attribute Selection',
                     self.attr_selection_mode_button,
-                    self.new_selection_button
+                    self.new_selection_button,
+                    '#### Bias Contributions',
+                    self.bias_contributions_nodes_latex,
+                    self.bias_contributions_structure_latex,
+                    self.bias_contributions_attrs_latex,
+                    self.bias_contributions_emb_latex,
                 ),
                 self.attribute_view_overview,
             ),
@@ -732,22 +787,35 @@ class EUG:
         )
 
 ### structural bias overview
+        # original scale
         degree_hist_frequencies = []
-        self.degree_hist_edges = []
+        degree_hist_edges = []
         for i in range(self.max_hop):
             d = self.computational_graph_degrees[i]
             frequencies, edges = np.histogram(d, 20)
             degree_hist_frequencies.append(frequencies)
-            self.degree_hist_edges.append(edges)
+            degree_hist_edges.append(edges)
+        # log scale
+        degree_hist_frequencies_log = []
+        degree_hist_edges_log = []
+        for i in range(self.max_hop):
+            d = self.computational_graph_degrees[i]
+            frequencies, edges = np.histogram(np.log(d+1), 20)
+            degree_hist_frequencies_log.append(frequencies)
+            degree_hist_edges_log.append(edges)
+        frequencies_dict = {'Original': degree_hist_frequencies, 'Log': degree_hist_frequencies_log}
+        edges_dict = {'Original': degree_hist_edges, 'Log': degree_hist_edges_log}
         self.structural_bias_overview_hist_all = hv.DynamicMap(pn.bind(draw.draw_structural_bias_overview_hist_all,
-                                                                       frequencies_ls=degree_hist_frequencies,
-                                                                       edges_ls=self.degree_hist_edges,
-                                                                       hop=self.correlation_view_selection),
+                                                                       frequencies_dict=frequencies_dict,
+                                                                       edges_dict=edges_dict,
+                                                                       hop=self.correlation_view_selection,
+                                                                       scale=self.n_neighbors_scale_group),
                                                               )
         self.structural_bias_overview_hist_selected = hv.DynamicMap(pn.bind(draw.draw_structural_bias_overview_hist_selected,
                                                                             computational_graph_degrees=self.computational_graph_degrees,
-                                                                            edges_ls=self.degree_hist_edges,
-                                                                            hop=self.correlation_view_selection,),
+                                                                            edges_dict=edges_dict,
+                                                                            hop=self.correlation_view_selection,
+                                                                            scale=self.n_neighbors_scale_group),
                                                                      streams=[self.pre_selected_nodes_stream])
         self.structural_bias_overview_hist = (self.structural_bias_overview_hist_selected * self.structural_bias_overview_hist_all).opts(
             width=int(self.structural_bias_overview_width*0.93),
@@ -755,8 +823,8 @@ class EUG:
         )
 
         self.structural_bias_overview = pn.Card(
-            self.correlation_view_latex1,
-            self.correlation_view_latex2, 
+            # self.correlation_view_latex1,
+            # self.correlation_view_latex2, 
             self.correlation_view_selection,
             self.structural_bias_overview_hist,
             self.selected_communities_dropdown,
@@ -778,10 +846,13 @@ class EUG:
                     sens_name_confirm_control_panel_button,
                 ), 
                 '#### Node Selection',
+                self.n_selected_nodes_latex,
                 pn.Row(
                     node_selection_confirm_control_panel_button,
                     node_selection_clear_control_panel_button,
                 ),
+                '#### Scale of # of Neighbors',
+                self.n_neighbors_scale_group,
                 pn.layout.Divider(), 
                 '### Embedding View Settings',
                 self.layer_selection, 
@@ -898,7 +969,8 @@ class EUG:
                             self.dependency_view_attr_degree.object = hv.DynamicMap(pn.bind(draw.draw_dependency_view_attr_degree_violin,
                                                                                             feat=feat,
                                                                                             computational_graph_degrees=self.computational_graph_degrees,
-                                                                                            hop=self.correlation_view_selection,),
+                                                                                            hop=self.correlation_view_selection,
+                                                                                            scale=self.n_neighbors_scale_group,),
                                                                                     streams=[self.selected_nodes_stream,
                                                                                     ]
                                                                                     ).opts(
@@ -954,12 +1026,14 @@ class EUG:
                             dependency_view_attr_degree_hex_all = hv.DynamicMap(pn.bind(draw.draw_dependency_view_attr_degree_hex_all,
                                                                                         feat=feat,
                                                                                         computational_graph_degrees=self.computational_graph_degrees,
-                                                                                        hop=self.correlation_view_selection,)
+                                                                                        hop=self.correlation_view_selection,
+                                                                                        scale=self.n_neighbors_scale_group,),
                                                                                         )
                             dependency_view_attr_degree_scatter_selected = hv.DynamicMap(pn.bind(draw.draw_dependency_view_attr_degree_scatter_selected,
                                                                                              feat=feat,
                                                                                              computational_graph_degrees=self.computational_graph_degrees,
-                                                                                             hop=self.correlation_view_selection,),
+                                                                                             hop=self.correlation_view_selection,
+                                                                                             scale=self.n_neighbors_scale_group,),
                                                                                      streams=[self.data_embedding_view_alpha,
                                                                                               self.selected_nodes_stream,]) 
                             self.dependency_view_attr_degree.object = (dependency_view_attr_degree_hex_all * dependency_view_attr_degree_scatter_selected).opts(
@@ -1091,10 +1165,12 @@ class EUG:
     def _min_threshold_slider_button_callback(self, event):
         thr = self.min_threshold_slider.value
         # Recalculate communities
-        self.node_communities = community.extract_communities(community.Tree(), 
-                                                              *copy.deepcopy(self.extract_communities_args[1: 3]), 
-                                                              self.extract_communities_args[3], 
-                                                              thr)
+        # self.node_communities = community.extract_communities(community.Tree(), 
+        #                                                       *copy.deepcopy(self.extract_communities_args[1: 3]), 
+        #                                                       self.extract_communities_args[3], 
+        #                                                       thr)
+        self.node_communities = community.extract_communities(self.extract_communities_args,
+                                                                thr)
         self.communities = []
         for indices in self.node_communities:
             # Convert set of indices to sorted list for slicing
@@ -1121,6 +1197,9 @@ class EUG:
         # update the alpha of the nodes
         self.data_embedding_view_alpha.event(alpha=alpha)
 
+        # update self.n_selected_nodes_latex
+        self.n_selected_nodes_latex.object = f'# of Selected Nodes: {len(selected_nodes)}/{self.n_nodes} ({(len(selected_nodes) / self.n_nodes * 100):.2f}%)'
+
     def _selected_nodes_stream_subscriber(self, selected_nodes):
         # update contributions
         contributions = util.calc_contributions(
@@ -1129,21 +1208,79 @@ class EUG:
             feat=self.feat,
             selected_nodes=self.selected_nodes_stream.selected_nodes,
             groups=self.groups_stream.groups)
-        self.contributions_stream.event(contributions=contributions)
+        
+        selected_attrs_ls = self.selected_attrs_ls_stream.selected_attrs_ls
+        contributions_selected_attrs = []
+        for selected_attrs in selected_attrs_ls:
+            if selected_attrs:
+                contribution_selected_attrs = individual_bias.calc_attr_contributions(
+                    model=self.model,
+                    g=self.g, 
+                    feat=self.feat,
+                    selected_nodes=self.selected_nodes_stream.selected_nodes,
+                    groups=self.groups_stream.groups,
+                    attr_indices=selected_attrs
+                )
+                contributions_selected_attrs.append(contribution_selected_attrs)
+            else:
+                contributions_selected_attrs.append(0.)
+        self.contributions_stream.event(contributions=contributions,
+                                        contributions_selected_attrs=np.array(contributions_selected_attrs))
 
-        # update self.contributions_selected_nodes_stream
-        gc = individual_bias.group_bias_contribution(
-            self.adj,
-            self.feat,
-            self.model,
-            self.groups_stream.groups,
-            self.selected_nodes_stream.selected_nodes
+        # # update self.contributions_selected_nodes_stream
+        # gc = individual_bias.group_bias_contribution(
+        #     self.adj,
+        #     self.feat,
+        #     self.model,
+        #     self.groups_stream.groups,
+        #     self.selected_nodes_stream.selected_nodes
+        # )
+        # self.contributions_selected_nodes_stream.event(contributions_selected_nodes=gc)
+
+        # update self.bias_contributions_attrs_latex
+        contribution_nodes = individual_bias.group_bias_contribution(
+            adj=self.adj,
+            model=self.model,
+            features=self.feat,
+            group=self.groups_stream.groups,
+            selected_nodes=self.selected_nodes_stream.selected_nodes
         )
-        self.contributions_selected_nodes_stream.event(contributions_selected_nodes=gc)
+        contribution_attrs = individual_bias.calc_attr_contributions(
+            model=self.model,
+            g=self.g, 
+            feat=self.feat,
+            selected_nodes=self.selected_nodes_stream.selected_nodes,
+            groups=self.groups_stream.groups,
+            attr_indices=list(range(self.n_feat))
+        )
+        contribution_structure = individual_bias.calc_structure_contribution(
+            adj=self.adj,
+            model=self.model,
+            g=self.g, 
+            feat=self.feat,
+            selected_nodes=self.selected_nodes_stream.selected_nodes,
+            groups=self.groups_stream.groups,
+        )
+        contribution_emb = individual_bias.calc_emb_contribution(
+            model=self.model,
+            g=self.g, 
+            feat=self.feat,
+            selected_nodes=self.selected_nodes_stream.selected_nodes,
+            groups=self.groups_stream.groups,
+        )
+        self.bias_contributions_nodes = contribution_nodes
+        self.bias_contributions_attrs = contribution_attrs
+        self.bias_contributions_structure = contribution_structure
+        self.bias_contributions_emb = contribution_emb
+        self.bias_contributions_nodes_latex.object = f'Nodes: {contribution_nodes:.4f}'
+        self.bias_contributions_attrs_latex.object = f'Attributes: {contribution_attrs:.4f}'
+        self.bias_contributions_structure_latex.object = f'Structure: {contribution_structure:.4f}'
+        self.bias_contributions_emb_latex.object = f'Embeddings: {contribution_emb:.4f}'
 
-    def _contributions_selected_nodes_stream_subscriber(self, contributions_selected_nodes):
-        # update correlation_view_md
-        self.correlation_view_latex2.object = f'{(contributions_selected_nodes * 100):.2f}%'
+    # def _contributions_selected_nodes_stream_subscriber(self, contributions_selected_nodes):
+    #     # update correlation_view_md
+    #     # self.correlation_view_latex2.object = f'{(contributions_selected_nodes * 100):.2f}%'
+    #     self.bias_contributions_nodes_latex.object = f'Nodes: {contributions_selected_nodes:.4f}'
 
     def _update_correlations_groups_callback(self, groups): 
         # update contributions
@@ -1209,7 +1346,7 @@ class EUG:
         # print('in _selected_attrs_ls_stream_callback')
         if selected_attrs_ls[-1]:
             # update contributions_stream.contributions_selected_attrs[-1] according to the selected_attrs_ls[-1]
-            contribution_selected_attrs = util.calc_attr_contributions(
+            contribution_selected_attrs = individual_bias.calc_attr_contributions(
                 model=self.model,
                 g=self.g, 
                 feat=self.feat,
@@ -1237,6 +1374,7 @@ class EUG:
         with open(file_path, 'wb') as file:
             # pickle.dump(self.extract_communities_args, file) 
             pickle.dump(self.extract_communities_args[1: 3], file)
+            # pickle.dump(self.extract_communities_args[1], file)
 
     def _load_extract_communities_args(self):
         # Determine the directory of the current file
@@ -1262,7 +1400,15 @@ class EUG:
     def _record_button_callback(self, event):
         selected_nodes = self.selected_nodes_stream.selected_nodes
         selected_attrs = self.selected_attrs_ls_stream.selected_attrs_ls[-1] 
-        self.records.append({'Nodes': selected_nodes, 'Attributes': selected_attrs})   
+        self.records.append({
+            'Sens': self.sens_name_selector.value,
+            'Nodes': selected_nodes, 
+            'Attributes': selected_attrs,
+            'Bias Contribution of Nodes': self.bias_contributions_nodes,
+            'Bias Contribution of Attributes': self.bias_contributions_attrs,
+            'Bias Contribution of Structure': self.bias_contributions_structure,
+            'Bias Contribution of Embeddings': self.bias_contributions_emb,
+        })   
 
     def _graph_view_scatter_selection1d_subscriber(self, index):
         if index:
@@ -1295,3 +1441,5 @@ class EUG:
     def _node_selection_clear_control_panel_button_callback(self, event):
         self.pre_selected_nodes_stream.event(selected_nodes=np.array([]))
         self.selected_nodes_stream.event(selected_nodes=self.node_indices)
+
+    # def _n_neighbors_scale_group_callback(self, event):
