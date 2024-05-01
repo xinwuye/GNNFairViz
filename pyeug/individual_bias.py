@@ -197,46 +197,6 @@ def avg_dist(group_new, pred):
     return avg_dist
 
 
-# def jsdist(set1, set2):
-#     n_classes = set1.shape[1]
-#     n_set1 = set1.shape[0]
-#     n_set2 = set2.shape[0]
-#     if n_set1 <= n_classes * 30:
-#         sampled_set1t = set1.T
-#     else:
-#         sampled_set1t = set1[np.random.choice(set1.shape[0], n_classes * 30, replace=False)].T
-#     if n_set2 <= n_classes * 30:
-#         sampled_set2t = set2.T
-#     else:
-#         sampled_set2t = set2[np.random.choice(set2.shape[0], n_classes * 30, replace=False)].T
-#     # kde_time_start = time.time()
-#     # Estimate PDFs using KDE
-#     # kde1 = gaussian_kde(set1.T)
-#     # kde2 = gaussian_kde(set2.T)
-#     kde1 = gaussian_kde(set1.T) 
-#     kde2 = gaussian_kde(set2.T) 
-#     # print(f"KDE time: {time.time() - kde_time_start:.6f} seconds")
-#     # Assuming your KDE objects are kde1 and kde2, created from set1 and set2
-
-#     # Combine the datasets to cover the support of both distributions
-#     combined_set = np.hstack([set1.T, set2.T])  # Combine along the feature axis
-#     # combined_set = np.hstack([sampled_set1t, sampled_set2t])  # Combine along the feature axis
-#     # print('shape of combined set:', combined_set.shape)
-#     # pdf_time_start = time.time()
-#     # Evaluate the densities of both KDEs on the combined set
-#     pdf1 = kde1(combined_set)
-#     pdf2 = kde2(combined_set)
-#     # print(f"PDF time: {time.time() - pdf_time_start:.6f} seconds")
-#     # Normalize the densities to ensure they sum to 1 (like probabilities)
-#     pdf1 /= pdf1.sum()
-#     pdf2 /= pdf2.sum()
-#     # js_time_start = time.time()
-#     # Compute JS divergence
-#     js_dist = jensenshannon(pdf1, pdf2, base=2)
-#     # print(f"JS divergence time: {time.time() - js_time_start:.6f} seconds")
-#     return js_dist
-
-
 def gaussian_kde_pytorch(data, bw_method='scott'):
     """
     Vectorized Gaussian KDE in PyTorch for multi-dimensional data.

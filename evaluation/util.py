@@ -104,7 +104,7 @@ def preprocess_nba(nba):
     sens = np.stack([country, age_group], axis=1).T
     sens_names = ["Country", "Age"]
 
-    return g, adj, features, sens, sens_names, masks, labels
+    return g, adj, features, sens, sens_names, masks, labels, feat_names
 
 
 def preprocess_bail(bail):
@@ -141,7 +141,7 @@ def preprocess_bail(bail):
     sens = np.stack([race], axis=1).T
     sens_names = ["Race"]
 
-    return g, adj, features, sens, sens_names, masks, labels
+    return g, adj, features, sens, sens_names, masks, labels, feat_names
 
 
 def preprocess_pokec_n(pokec_n):

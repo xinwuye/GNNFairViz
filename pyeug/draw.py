@@ -547,7 +547,7 @@ def draw_attribute_view_overview_all(feat, groups, columns_categorical, hw_ratio
     m = len(ns)
     n = len(overall_bias_indicators)
 
-    circle_gap = 2
+    circle_gap = 1
 
     ymax = n+1.5
     ymin = 0
@@ -555,13 +555,16 @@ def draw_attribute_view_overview_all(feat, groups, columns_categorical, hw_ratio
     # solve: xmin = -circle_gap * (1 + n_selected_attrs) * ((xmax - xmin) / (ymax - ymin)) / hw_ratio
     xmin = (circle_gap * xmax * (n_selected_attrs + 1)) / (circle_gap * n_selected_attrs + circle_gap - hw_ratio * ymax + hw_ratio * ymin)
 
+    # feat is a df, get the column names as feat_names
+    feat_names = feat.columns
+
     # Prepare the data for Rectangles
     rect_data = []
     x0 = 0
     for j in range(m):
         width = ns[j]
         column = bias_indicators[:, j]
-        rect_data.extend([(x0, i, x0 + width, i+1, column[i], i) for i in range(n)])
+        rect_data.extend([(x0, i, x0 + width, i+1, column[i], feat_names[i]) for i in range(n)])
         x0 += all_ns[j]
 
     rect_data = pd.DataFrame(rect_data, columns=['x0', 'y0', 'x1', 'y1', 'Color', 'ID'])        
@@ -613,14 +616,15 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
     m = len(ns)
     n = len(overall_bias_indicators)
 
-    circle_gap = 2
+    circle_gap = 1
 
     ymax = n+1.5
     ymin = 0
     xmax = n_all_nodes * 1.1 
+    print(xmax)
     # solve: xmin = -circle_gap * (1 + n_selected_attrs) * ((xmax - xmin) / (ymax - ymin)) / hw_ratio
     xmin = (circle_gap * xmax * (n_selected_attrs + 1)) / (circle_gap * n_selected_attrs + circle_gap - hw_ratio * ymax + hw_ratio * ymin)
-
+    print(xmin)
     # Prepare the data for Rectangles
     rect_data = []
     x0 = 0
@@ -688,6 +692,7 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
     for i in range(n):
         # sector_pointes1: contributions
         end_angle = sector_pointes1_angles[i]
+        # print('end_angle: ', end_angle)
         sector_points1 = create_sector(center=(circle_x, i + 0.5),
                                         radius=r_sector1,
                                         x_y_ratio = x_y_ratio,
