@@ -123,9 +123,9 @@ def draw_embedding_view_polys(xy, layer, groups, colors, polygons_lst, max_edges
     colormap = {sens_selected_unique[i]: colors[i] for i in range(len(sens_selected_unique))}
 
     # Calculate and draw polygons (regions or clusters) as before
-    print('reach compute contours')
+    # print('reach compute contours')
     poly_df = RangesetCategorical.compute_contours(colormap, polygons_lst, max_edges_lst, threshold)
-    print('compute contours is fine')
+    # print('compute contours is fine')
     polys = hv.Polygons([{('x', 'y'): list(zip(poly_df.iloc[i]['xs'][0][0], poly_df.iloc[i]['ys'][0][0])), 
                           'level': poly_df.iloc[i]['color']} for i in range(len(poly_df))], vdims='level')
     polys.opts(color='level', line_width=0, alpha=0.3, framewise=True, active_tools=[], tools=[]).opts(
@@ -222,11 +222,12 @@ def draw_bar_metric_view(data, metric_name):
         ]
     )
     # Creating a bar chart
-    bar_chart = hv.Bars(data, 'Sensitive Subgroup', metric_name).opts(opts.Bars(xrotation=90)).opts(
+    bar_chart = hv.Bars(data, 'Sensitive Group', metric_name).opts(opts.Bars(xrotation=90)).opts(
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)], 
         fill_color=FILL_GREY_COLOR,  
-        line_color=None ,
+        line_color=None, 
         tools=[custom_hover], 
+        invert_axes=True,
     )
     return bar_chart
 
@@ -440,7 +441,7 @@ def draw_attribute_view_violin(variable_data, feat_name, groups, selected_nodes)
     
     # Draw the violin plot for the specified feature, grouped by 'Group'
     violin = hv.Violin(df, 'Group', feat_name).opts(ylabel='Attribute',
-                                                    xlabel='Sensitive Subgroup',
+                                                    xlabel='Sensitive Group',
                                                     hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
                                                     shared_axes=False,
                                                     violin_fill_color=FILL_GREY_COLOR,
@@ -449,84 +450,6 @@ def draw_attribute_view_violin(variable_data, feat_name, groups, selected_nodes)
                                                     violin_line_color=None)  
     
     return violin
-
-
-# def draw_dependency_view_attr_sens_bar_all(variable_data, feat_name, groups):
-#     # Ensure variable_data and groups are pandas Series with the same length
-#     if isinstance(variable_data, np.ndarray):
-#         variable_data = pd.Series(variable_data, name=feat_name)
-#     if isinstance(groups, np.ndarray): 
-#         groups = pd.Series(groups, name="Group")
-
-#     # convert variable_data to string
-#     variable_data = variable_data.astype(str)
-
-#     # create a column count with the same length as variable_data and all values are 1
-#     count = np.ones(len(variable_data))
-#     # create a DataFrame with variable_data, groups, and count
-#     df = pd.DataFrame({feat_name: variable_data, 'Group': groups, 'Count': count})
-#     # group by feat_name and 'Group' and sum the count, and get the max count as ymax
-#     aggregated_df = df.groupby([feat_name, 'Group']).sum().reset_index()
-#     ymax = aggregated_df['Count'].max() * 1.05
-
-#     # # Create the bar chart
-#     # bars = hv.Bars(aggregated_df, ['Group', feat_name], 'Count').opts(
-#     bars = hv.Bars(df, ['Group', feat_name], 'Count').aggregate(function=np.sum).opts(
-#         stacked=False, 
-#         xlabel='Sensitive Group', ylabel='Count',
-#         shared_axes=False,
-#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-#         ylim=(0, ymax),
-#         # invert_axes=True,
-#         multi_level=False,
-#         show_legend=False,
-#         fill_alpha=0,
-#         line_width=1.5,
-#         # put toolbar on the top
-#         toolbar='above', 
-#         xrotation=90,
-#     )
-#     print('in draw_dependency_view_attr_sens_bar_all')
-
-#     return bars
-
-
-# def draw_dependency_view_attr_sens_bar_selected(variable_data, feat_name, groups, selected_nodes):
-#     # Ensure variable_data and groups are pandas Series with the same length
-#     if isinstance(variable_data, np.ndarray):
-#         variable_data = pd.Series(variable_data, name=feat_name)
-#     if isinstance(groups, np.ndarray): 
-#         groups = pd.Series(groups, name="Group")
-
-#     variable_data = variable_data.iloc[selected_nodes]
-#     # convert variable_data to string
-#     variable_data = variable_data.astype(str)
-#     groups = groups.iloc[selected_nodes]
-
-#     # create a column count with the same length as variable_data and all values are 1
-#     count = np.ones(len(variable_data))
-#     # create a DataFrame with variable_data, groups, and count
-#     df = pd.DataFrame({feat_name: variable_data, 'Group': groups, 'Count': count})
-
-#     # # Create the bar chart
-#     # bars = hv.Bars(aggregated_df, ['Group', feat_name], 'Count').opts(
-#     bars = hv.Bars(df, ['Group', feat_name], 'Count').aggregate(function=np.sum).opts(
-#         # stacked=False, 
-#         xlabel='Sensitive Group', ylabel='Count',
-#         shared_axes=False,
-#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-#         # invert_axes=True,
-#         multi_level=False,
-#         # put toolbar on the top
-#         toolbar='above',
-#         line_color=None,
-#         fill_alpha=1,
-#         fill_color=FILL_GREY_COLOR,
-#         show_legend=False, 
-#         xrotation=90,
-#     )
-
-#     return bars
 
 
 def draw_dependency_view_attr_sens_bar_all(variable_data, feat_name, groups):
@@ -659,7 +582,7 @@ def draw_attribute_view_overview_all(feat, groups, columns_categorical, hw_ratio
                         # yticks=list(range(n)),  # Set y-axis ticks 
                         # yaxis=None,  # Hide y-axis
                         xaxis=None,  # Hide x-axis
-                        xlabel='Sensitive Subgroup',  # X-axis label
+                        xlabel='Sensitive Group',  # X-axis label
                         yticks=yticks,
                         line_width=0.1,
                         framewise=True,
@@ -725,7 +648,7 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
                         # yticks=list(range(n)),  # Set y-axis ticks 
                         # yaxis=None,  # Hide y-axis
                         xaxis=None,  # Hide x-axis
-                        xlabel='Sensitive Subgroup',  # X-axis label
+                        xlabel='Sensitive Group',  # X-axis label
                         yticks=yticks,
                         line_width=0.1,
                         framewise=True,
@@ -1260,7 +1183,7 @@ def draw_fairness_metric_view_detail(metric_name, selected_nodes, groups, labels
                 prob = np.mean(group_predictions == label)
                 heatmap_data.append((str(int(label)), group, prob))
 
-        chart = draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Subgroup', 'P(Pred.=Label)')
+        chart = draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Group', 'P(Pred.=Label)')
     elif metric_name == 1 or metric_name == 5:
         heatmap_data = []
         
@@ -1276,7 +1199,7 @@ def draw_fairness_metric_view_detail(metric_name, selected_nodes, groups, labels
 
                 heatmap_data.append((str(int(label)), group, tpr))
         
-        chart = draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Subgroup', 'TPR')
+        chart = draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Group', 'TPR')
     elif metric_name == 2 or metric_name == 6: 
         if eod_radio == 'TPR':
             heatmap_data = []
@@ -1293,7 +1216,7 @@ def draw_fairness_metric_view_detail(metric_name, selected_nodes, groups, labels
 
                     heatmap_data.append((str(int(label)), group, tpr))
             
-            chart = draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Subgroup', 'TPR')
+            chart = draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Group', 'TPR')
         elif eod_radio == 'FPR':
             heatmap_data = []
             
@@ -1309,7 +1232,7 @@ def draw_fairness_metric_view_detail(metric_name, selected_nodes, groups, labels
 
                     heatmap_data.append((str(int(label)), group, fpr))
             
-            chart = draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Subgroup', 'FPR')
+            chart = draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Group', 'FPR')
     elif metric_name == 3 or metric_name == 7:
         group_accs = []
         for group in unique_groups:
@@ -1318,7 +1241,7 @@ def draw_fairness_metric_view_detail(metric_name, selected_nodes, groups, labels
 
             group_accs.append(group_accuracy)
 
-        data = {'Sensitive Subgroup': unique_groups, 'Accuracy': group_accs}
+        data = {'Sensitive Group': unique_groups, 'Accuracy': group_accs}
         chart = draw_bar_metric_view(data, 'Accuracy')
 
     return chart

@@ -307,7 +307,7 @@ class Facebook(Dataset):
         sens = feats[:, 264]
         labels = feats[:, 220]
 
-        feats = np.concatenate([feats[:, :264], feats[:, 266:]], -1)
+        feats = np.concatenate([feats[:, :264], feats[:, 265:]], -1)
 
         feats = np.concatenate([feats[:, :220], feats[:, 221:]], -1)
 
@@ -320,6 +320,8 @@ class Facebook(Dataset):
 
         for j in range(edges.shape[0]):
             adj[node_mapping[edges[j][0]], node_mapping[edges[j][1]]] = 1
+        # set diagonal to 1
+        np.fill_diagonal(adj, 1)
 
         idx_train = np.random.choice(
             list(range(node_num)), int(0.8 * node_num), replace=False
@@ -335,9 +337,9 @@ class Facebook(Dataset):
         self.idx_test_ = torch.LongTensor(idx_test)
         self.labels_ = torch.LongTensor(labels)
 
-        self.features_ = torch.cat([self.features_, self.sens_.unsqueeze(-1)], -1)
+        # self.features_ = torch.cat([self.features_, self.sens_.unsqueeze(-1)], -1)
         self.adj_ = mx_to_torch_sparse_tensor(adj)
-        self.sens_idx_ = -1
+        # self.sens_idx_ = -1
 
 
 class Nba(Dataset):
@@ -513,6 +515,180 @@ class Nba(Dataset):
         return adj, features, labels, idx_train, idx_val, idx_test, sens, idx_sens_train, feat_names, sens_names
 
 
+# class Pokec_z(Dataset):
+#     def __init__(
+#         self,
+#         dataset_name="pokec_z",
+#         predict_attr_specify=None,
+#         return_tensor_sparse=True,
+#     ):
+#         super().__init__()
+#         if dataset_name != "nba":
+#             if dataset_name == "pokec_z":
+#                 dataset = "region_job"
+#             elif dataset_name == "pokec_n":
+#                 dataset = "region_job_2"
+#             else:
+#                 dataset = None
+#             sens_attr = "region"
+#             predict_attr = "I_am_working_in_field"
+#             label_number = 500
+#             sens_number = 200
+#             seed = 20
+#             path = "./dataset/pokec/"
+#             test_idx = False
+#         else:
+#             dataset = "nba"
+#             sens_attr = "country"
+#             predict_attr = "SALARY"
+#             label_number = 100
+#             sens_number = 50
+#             seed = 20
+#             path = "./dataset/NBA"
+#             test_idx = True
+
+#         (
+#             adj,
+#             features,
+#             labels,
+#             idx_train,
+#             idx_val,
+#             idx_test,
+#             sens,
+#             idx_sens_train,
+#             feat_names,
+#             sens_names,
+#         ) = self.load_pokec(
+#             dataset,
+#             sens_attr,
+#             predict_attr if predict_attr_specify == None else predict_attr_specify,
+#             path=path,
+#             label_number=label_number,
+#             sens_number=sens_number,
+#             seed=seed,
+#             test_idx=test_idx,
+#         )
+
+#         # adj=adj.todense(
+#         adj = mx_to_torch_sparse_tensor(
+#             adj, is_sparse=True, return_tensor_sparse=return_tensor_sparse
+#         )
+#         labels[labels > 1] = 1
+#         self.adj_ = adj
+#         self.features_ = features
+#         self.labels_ = labels
+#         self.idx_train_ = idx_train
+#         self.idx_val_ = idx_val
+#         self.idx_test_ = idx_test
+#         self.sens_ = sens
+#         self.sens_idx_ = -1
+#         self.feat_names_ = feat_names
+#         self.sens_names_ = sens_names
+
+#     def load_pokec(
+#         self,
+#         dataset,
+#         sens_attr,
+#         predict_attr,
+#         path="../dataset/pokec/",
+#         label_number=1000,
+#         sens_number=500,
+#         seed=19,
+#         test_idx=False,
+#     ):
+#         """Load data"""
+
+#         self.path_name = "pokec_z"
+#         self.url = "https://drive.google.com/u/0/uc?id=1FOYOIdFp6lI9LH5FJAzLhjFCMAxT6wb4&export=download"
+#         self.destination = os.path.join(self.root, self.path_name, "pokec_z.zip")
+#         if not os.path.exists(os.path.join(self.root, self.path_name)):
+#             os.makedirs(os.path.join(self.root, self.path_name))
+#         if not os.path.exists(
+#             os.path.join(self.root, self.path_name, "region_job.csv")
+#         ):
+#             gdown.download(self.url, self.destination)
+#             with zipfile.ZipFile(self.destination, "r") as zip_ref:
+#                 zip_ref.extractall(os.path.join(self.root, self.path_name))
+#         if not os.path.exists(
+#             os.path.join(self.root, self.path_name, "region_job_relationship.txt")
+#         ):
+#             gdown.download(self.url, self.destination, quiet=False)
+#             with zipfile.ZipFile(self.destination, "r") as zip_ref:
+#                 zip_ref.extractall(os.path.join(self.root, self.path_name))
+
+#         idx_features_labels = pd.read_csv(
+#             os.path.join(self.root, self.path_name, "region_job.csv")
+#         )
+#         header = list(idx_features_labels.columns)
+#         header.remove("user_id")
+
+#         header.remove(sens_attr)
+#         header.remove(predict_attr)
+
+#         features = sp.csr_matrix(idx_features_labels[header], dtype=np.float32)
+#         labels = idx_features_labels[predict_attr].values
+
+#         # build graph
+#         idx = np.array(idx_features_labels["user_id"], dtype=np.int64)
+#         idx_map = {j: i for i, j in enumerate(idx)}
+#         edges_unordered = np.genfromtxt(
+#             os.path.join(self.root, self.path_name, "region_job_relationship.txt"),
+#             dtype=np.int64,
+#         )
+
+#         edges = np.array(
+#             list(map(idx_map.get, edges_unordered.flatten())), dtype=np.int64
+#         ).reshape(edges_unordered.shape)
+
+#         adj = sp.coo_matrix(
+#             (np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])),
+#             shape=(labels.shape[0], labels.shape[0]),
+#             dtype=np.float32,
+#         )
+#         # build symmetric adjacency matrix
+#         adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
+
+#         # features = normalize(features)
+#         adj = adj + sp.eye(adj.shape[0])
+
+#         features = torch.FloatTensor(np.array(features.todense()))
+#         labels = torch.LongTensor(labels)
+#         # adj = mx_to_torch_sparse_tensor(adj)
+
+#         import random
+
+#         random.seed(seed)
+#         label_idx = np.where(labels >= 0)[0]
+#         random.shuffle(label_idx)
+
+#         idx_train = label_idx[: min(int(0.5 * len(label_idx)), label_number)]
+#         idx_val = label_idx[int(0.5 * len(label_idx)) : int(0.75 * len(label_idx))]
+#         if test_idx:
+#             idx_test = label_idx[label_number:]
+#             idx_val = idx_test
+#         else:
+#             idx_test = label_idx[int(0.75 * len(label_idx)) :]
+
+#         sens = idx_features_labels[sens_attr].values
+
+#         sens_idx = set(np.where(sens >= 0)[0])
+#         idx_test = np.asarray(list(sens_idx & set(idx_test)))
+#         sens = torch.FloatTensor(sens)
+#         idx_sens_train = list(sens_idx - set(idx_val) - set(idx_test))
+#         random.seed(seed)
+#         random.shuffle(idx_sens_train)
+#         idx_sens_train = torch.LongTensor(idx_sens_train[:sens_number])
+
+#         idx_train = torch.LongTensor(idx_train)
+#         idx_val = torch.LongTensor(idx_val)
+#         idx_test = torch.LongTensor(idx_test)
+
+#         # features = torch.cat([features, sens.unsqueeze(-1)], -1)
+#         # random.shuffle(sens_idx)
+#         feat_names = header
+#         sens_names = [sens_attr]
+
+#         return adj, features, labels, idx_train, idx_val, idx_test, sens, idx_sens_train, feat_names, sens_attr
 class Pokec_z(Dataset):
     def __init__(
         self,
@@ -528,7 +704,7 @@ class Pokec_z(Dataset):
                 dataset = "region_job_2"
             else:
                 dataset = None
-            sens_attr = "region"
+            sens_attrs = ["region", "gender"]
             predict_attr = "I_am_working_in_field"
             label_number = 500
             sens_number = 200
@@ -558,7 +734,7 @@ class Pokec_z(Dataset):
             sens_names,
         ) = self.load_pokec(
             dataset,
-            sens_attr,
+            sens_attrs,
             predict_attr if predict_attr_specify == None else predict_attr_specify,
             path=path,
             label_number=label_number,
@@ -586,7 +762,7 @@ class Pokec_z(Dataset):
     def load_pokec(
         self,
         dataset,
-        sens_attr,
+        sens_attrs,
         predict_attr,
         path="../dataset/pokec/",
         label_number=1000,
@@ -620,7 +796,8 @@ class Pokec_z(Dataset):
         header = list(idx_features_labels.columns)
         header.remove("user_id")
 
-        header.remove(sens_attr)
+        for sens_attr in sens_attrs:
+            header.remove(sens_attr)
         header.remove(predict_attr)
 
         features = sp.csr_matrix(idx_features_labels[header], dtype=np.float32)
@@ -667,9 +844,17 @@ class Pokec_z(Dataset):
         else:
             idx_test = label_idx[int(0.75 * len(label_idx)) :]
 
-        sens = idx_features_labels[sens_attr].values
+        sens = []
+        for sens_attr in sens_attrs:
+            sens.append(idx_features_labels[sens_attr].values)
+        sens = np.stack(sens, axis=1).T
 
-        sens_idx = set(np.where(sens >= 0)[0])
+        # Create a boolean mask where each element is checked if it's >= 0
+        mask = sens >= 0
+        # Use 'all' along the columns (axis=0) to check if all values in each column are True
+        columns_with_all_non_negative = np.all(mask, axis=0)
+        # Get the indices of the columns that meet the condition
+        sens_idx = set(np.where(columns_with_all_non_negative)[0])
         idx_test = np.asarray(list(sens_idx & set(idx_test)))
         sens = torch.FloatTensor(sens)
         idx_sens_train = list(sens_idx - set(idx_val) - set(idx_test))
@@ -684,11 +869,185 @@ class Pokec_z(Dataset):
         # features = torch.cat([features, sens.unsqueeze(-1)], -1)
         # random.shuffle(sens_idx)
         feat_names = header
-        sens_names = [sens_attr]
+        sens_names = sens_attrs
 
-        return adj, features, labels, idx_train, idx_val, idx_test, sens, idx_sens_train, feat_names, sens_attr
+        return adj, features, labels, idx_train, idx_val, idx_test, sens, idx_sens_train, feat_names, sens_names
 
 
+# class Pokec_n(Dataset):
+#     def __init__(
+#         self,
+#         dataset_name="pokec_n",
+#         predict_attr_specify=None,
+#         return_tensor_sparse=True,
+#     ):
+#         super().__init__()
+#         if dataset_name != "nba":
+#             if dataset_name == "pokec_z":
+#                 dataset = "region_job"
+#             elif dataset_name == "pokec_n":
+#                 dataset = "region_job_2"
+#             else:
+#                 dataset = None
+#             sens_attr = "region"
+#             predict_attr = "I_am_working_in_field"
+#             label_number = 500
+#             sens_number = 200
+#             seed = 20
+#             path = "./dataset/pokec/"
+#             test_idx = False
+#         else:
+#             dataset = "nba"
+#             sens_attr = "country"
+#             predict_attr = "SALARY"
+#             label_number = 100
+#             sens_number = 50
+#             seed = 20
+#             path = "./dataset/NBA"
+#             test_idx = True
+
+#         (
+#             adj,
+#             features,
+#             labels,
+#             idx_train,
+#             idx_val,
+#             idx_test,
+#             sens,
+#             idx_sens_train,
+#             feat_names,
+#             sens_names,
+#         ) = self.load_pokec(
+#             dataset,
+#             sens_attr,
+#             predict_attr if predict_attr_specify == None else predict_attr_specify,
+#             path=path,
+#             label_number=label_number,
+#             sens_number=sens_number,
+#             seed=seed,
+#             test_idx=test_idx,
+#         )
+
+#         adj = mx_to_torch_sparse_tensor(
+#             adj, is_sparse=True, return_tensor_sparse=return_tensor_sparse
+#         )
+#         labels[labels > 1] = 1
+#         self.adj_ = adj
+#         self.features_ = features
+#         self.labels_ = labels
+#         self.idx_train_ = idx_train
+#         self.idx_val_ = idx_val
+#         self.idx_test_ = idx_test
+#         self.sens_ = sens
+#         self.sens_idx_ = -1
+#         self.feat_names_ = feat_names
+#         self.sens_names_ = sens_names
+
+#     def load_pokec(
+#         self,
+#         dataset,
+#         sens_attr,
+#         predict_attr,
+#         path="../dataset/pokec/",
+#         label_number=1000,
+#         sens_number=500,
+#         seed=19,
+#         test_idx=False,
+#     ):
+#         """Load data"""
+
+#         self.path_name = "pokec_n"
+#         self.url = "https://drive.google.com/u/0/uc?id=1wWm6hyCUjwnr0pWlC6OxZIj0H0ZSnGWs&export=download"
+#         self.destination = os.path.join(self.root, self.path_name, "pokec_n.zip")
+#         if not os.path.exists(os.path.join(self.root, self.path_name)):
+#             os.makedirs(os.path.join(self.root, self.path_name))
+#         if not os.path.exists(
+#             os.path.join(self.root, self.path_name, "region_job_2.csv")
+#         ):
+#             gdown.download(self.url, self.destination, quiet=False)
+#             with zipfile.ZipFile(self.destination, "r") as zip_ref:
+#                 zip_ref.extractall(os.path.join(self.root, self.path_name))
+#         if not os.path.exists(
+#             os.path.join(self.root, self.path_name, "region_job_2_relationship.txt")
+#         ):
+#             gdown.download(self.url, self.destination, quiet=False)
+#             with zipfile.ZipFile(self.destination, "r") as zip_ref:
+#                 zip_ref.extractall(os.path.join(self.root, self.path_name))
+
+#         idx_features_labels = pd.read_csv(
+#             os.path.join(self.root, self.path_name, "region_job_2.csv")
+#         )
+#         header = list(idx_features_labels.columns)
+#         header.remove("user_id")
+
+#         header.remove(sens_attr)
+#         header.remove(predict_attr)
+
+#         features = sp.csr_matrix(idx_features_labels[header], dtype=np.float32)
+#         labels = idx_features_labels[predict_attr].values
+
+#         # build graph
+#         idx = np.array(idx_features_labels["user_id"], dtype=np.int64)
+#         idx_map = {j: i for i, j in enumerate(idx)}
+#         edges_unordered = np.genfromtxt(
+#             os.path.join(self.root, self.path_name, "region_job_2_relationship.txt"),
+#             dtype=np.int64,
+#         )
+
+#         edges = np.array(
+#             list(map(idx_map.get, edges_unordered.flatten())), dtype=np.int64
+#         ).reshape(edges_unordered.shape)
+
+#         adj = sp.coo_matrix(
+#             (np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])),
+#             shape=(labels.shape[0], labels.shape[0]),
+#             dtype=np.float32,
+#         )
+#         # build symmetric adjacency matrix
+#         adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
+
+#         # features = normalize(features)
+#         adj = adj + sp.eye(adj.shape[0])
+
+#         features = torch.FloatTensor(np.array(features.todense()))
+#         labels = torch.LongTensor(labels)
+#         # adj = mx_to_torch_sparse_tensor(adj)
+
+#         import random
+
+#         random.seed(seed)
+#         label_idx = np.where(labels >= 0)[0]
+#         random.shuffle(label_idx)
+
+#         idx_train = label_idx[: min(int(0.5 * len(label_idx)), label_number)]
+#         idx_val = label_idx[int(0.5 * len(label_idx)) : int(0.75 * len(label_idx))]
+#         if test_idx:
+#             idx_test = label_idx[label_number:]
+#             idx_val = idx_test
+#         else:
+#             idx_test = label_idx[int(0.75 * len(label_idx)) :]
+
+#         sens = idx_features_labels[sens_attr].values
+
+#         sens_idx = set(np.where(sens >= 0)[0])
+#         idx_test = np.asarray(list(sens_idx & set(idx_test)))
+#         sens = torch.FloatTensor(sens)
+#         idx_sens_train = list(sens_idx - set(idx_val) - set(idx_test))
+#         random.seed(seed)
+#         random.shuffle(idx_sens_train)
+#         idx_sens_train = torch.LongTensor(idx_sens_train[:sens_number])
+
+#         idx_train = torch.LongTensor(idx_train)
+#         idx_val = torch.LongTensor(idx_val)
+#         idx_test = torch.LongTensor(idx_test)
+
+#         # features = torch.cat([features, sens.unsqueeze(-1)], -1)
+
+#         # random.shuffle(sens_idx)
+#         feat_names = header
+#         sens_names = [sens_attr]
+
+#         return adj, features, labels, idx_train, idx_val, idx_test, sens, idx_sens_train, feat_names, sens_attr
 class Pokec_n(Dataset):
     def __init__(
         self,
@@ -704,7 +1063,7 @@ class Pokec_n(Dataset):
                 dataset = "region_job_2"
             else:
                 dataset = None
-            sens_attr = "region"
+            sens_attrs = ["region", "gender"]
             predict_attr = "I_am_working_in_field"
             label_number = 500
             sens_number = 200
@@ -734,7 +1093,7 @@ class Pokec_n(Dataset):
             sens_names,
         ) = self.load_pokec(
             dataset,
-            sens_attr,
+            sens_attrs,
             predict_attr if predict_attr_specify == None else predict_attr_specify,
             path=path,
             label_number=label_number,
@@ -761,7 +1120,7 @@ class Pokec_n(Dataset):
     def load_pokec(
         self,
         dataset,
-        sens_attr,
+        sens_attrs,
         predict_attr,
         path="../dataset/pokec/",
         label_number=1000,
@@ -795,7 +1154,8 @@ class Pokec_n(Dataset):
         header = list(idx_features_labels.columns)
         header.remove("user_id")
 
-        header.remove(sens_attr)
+        for sens_attr in sens_attrs:
+            header.remove(sens_attr)
         header.remove(predict_attr)
 
         features = sp.csr_matrix(idx_features_labels[header], dtype=np.float32)
@@ -842,9 +1202,18 @@ class Pokec_n(Dataset):
         else:
             idx_test = label_idx[int(0.75 * len(label_idx)) :]
 
-        sens = idx_features_labels[sens_attr].values
+        sens = []
+        for sens_attr in sens_attrs:
+            sens.append(idx_features_labels[sens_attr].values)
+        sens = np.stack(sens, axis=1).T
 
-        sens_idx = set(np.where(sens >= 0)[0])
+        # sens_idx = set(np.where(sens >= 0)[0])
+        # Create a boolean mask where each element is checked if it's >= 0
+        mask = sens >= 0
+        # Use 'all' along the columns (axis=0) to check if all values in each column are True
+        columns_with_all_non_negative = np.all(mask, axis=0)
+        # Get the indices of the columns that meet the condition
+        sens_idx = set(np.where(columns_with_all_non_negative)[0])
         idx_test = np.asarray(list(sens_idx & set(idx_test)))
         sens = torch.FloatTensor(sens)
         idx_sens_train = list(sens_idx - set(idx_val) - set(idx_test))
@@ -860,9 +1229,9 @@ class Pokec_n(Dataset):
 
         # random.shuffle(sens_idx)
         feat_names = header
-        sens_names = [sens_attr]
+        sens_names = sens_attrs
 
-        return adj, features, labels, idx_train, idx_val, idx_test, sens, idx_sens_train, feat_names, sens_attr
+        return adj, features, labels, idx_train, idx_val, idx_test, sens, idx_sens_train, feat_names, sens_names
 
 
 class Twitter(Dataset):
@@ -2846,7 +3215,7 @@ class Oklahoma(Dataset):
         self.adj_ = mx_to_torch_sparse_tensor(adj)
         features = torch.FloatTensor(feats)
         sens = torch.FloatTensor(sens)
-        features = torch.cat([features, sens.unsqueeze(-1)], -1)
+        # features = torch.cat([features, sens.unsqueeze(-1)], -1)
         train_items = train_items
         test_items = test_items
 

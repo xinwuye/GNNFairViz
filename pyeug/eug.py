@@ -1,7 +1,7 @@
 from . import util
 from . import draw
 from . import community
-from .css import scrollbard_css
+from .css import scrollbar_css, multichoice_css
 from . import RangesetCategorical
 # from .metrics import node_classification
 # from .metrics.pdd import pdd
@@ -38,7 +38,8 @@ sys.setrecursionlimit(1000000)
 hv.extension('bokeh')
 pn.extension()
 
-pn.config.raw_css.append(scrollbard_css)
+pn.config.raw_css.append(scrollbar_css)
+pn.config.raw_css.append(multichoice_css )
 
 PERPLEXITY = 15 # german
 SEED = 42
@@ -130,7 +131,7 @@ class SelectedAttrsLs(Stream):
 
 
 class EUG:
-    def __init__(self, model, adj, feat, sens, sens_names, max_hop, masks, 
+    def __init__(self, model, adj, feat, sens, sens_names, masks, 
                  labels, emb_fnc, perplexity=PERPLEXITY, feat_names=None):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # if feat_names is None
@@ -149,7 +150,7 @@ class EUG:
         self.sens = sens
         self.groups_stream = Groups(groups=self.sens[0])
         self.sens_names = sens_names
-        self.max_hop = max_hop 
+        # self.max_hop = max_hop 
         self.train_mask = masks[0]
         self.val_mask = masks[1] 
         self.test_mask = masks[2]
@@ -185,6 +186,7 @@ class EUG:
 
         preprocessed = util.init(model, feat, g, emb_fnc)
         self.embeddings = preprocessed['embeddings']
+        self.max_hop = len(self.embeddings)
         # self.degree_boxes = preprocessed['degree_boxes']
         # self.metrics = util.calc_metrics(self.embeddings, sens_names, sens, self.degree_boxes)
         # self.metric_types = list(self.metrics[0].columns)
@@ -192,7 +194,7 @@ class EUG:
         self.embeddings_pca = util.proj_emb(self.embeddings, 'pca')
         self.embeddings_tsne = []
         self.embeddings_umap = util.proj_emb(self.embeddings, 'umap')
-        print('umap is fine')
+        # print('umap is fine')
 
         self.xy = np.array(self.embeddings_umap)
         # self.masked_adj_unfair = np.zeros_like(adj)
@@ -281,12 +283,17 @@ class EUG:
         self.height = height
         self.width = width
         padding = 15
-        self.control_panel_height = int(height/3-35-30)
+        # self.control_panel_height = int(height/3-35-30)
+        self.control_panel_height = int(height/3-35)-padding
         self.control_panel_width = int(width/4-20)
         self.graph_view_height = int(height/3-35)-padding
         self.graph_view_width = int(width/4)-padding
-        self.fairness_metric_view_height = int(height/3-35)-padding
-        self.fairness_metric_view_width = int(width/2)-padding
+        # self.fairness_metric_view_height = int(height/3-35)-padding
+        # self.fairness_metric_view_width = int(width/2)-padding
+        self.fairness_metric_view_height = int(height*2/3-35)-padding
+        self.fairness_metric_view_width = int(width/4)-padding
+        self.node_selection_view_height = int(height/3-35)-padding
+        self.node_selection_view_width = int(width*3/4)-padding
         self.density_view_height = int(height/3-35)-padding
         self.density_view_width = int(width/4)-padding
         self.structural_bias_overview_height = int(height*2/3-35)-padding
@@ -328,22 +335,6 @@ class EUG:
         self.n_selected_nodes_latex = pn.pane.LaTeX(f'# of Selected Nodes: {self.n_nodes}/{self.n_nodes} (100%)')
 
 ### graph view
-        # wh_graph_view = min(width/3, height/2-115)
-        # wh_graph_view = min(self.graph_view_width, self.graph_view_height-35)
-        # self.data_graph_view = DataGraphView(xy=self.xy, sens_name=self.sens_name_selector.value)
-
-        # self.graph_view_scatter = hv.DynamicMap(pn.bind(draw.draw_graph_view, layer=self.layer_selection, bundle=bundle, colors=self.colors), 
-        #     # streams=[self.data_graph_graph_view, self.data_graph_view, self.selection]) \
-        #     streams=[self.data_graph_graph_view, self.data_graph_view]) \
-        #     .opts(framewise=True, 
-        #           xaxis=None, yaxis=None, 
-        #         #   width=int(wh_graph_view*0.75), 
-        #         #   height=int(wh_graph_view*0.75),
-        #             width=int(self.graph_view_width*0.93),
-        #             height=int(self.graph_view_height*0.95),
-        #           shared_axes=False,
-        #           ) 
-
         # widget for graph view
         self.layer_selection = pn.widgets.Select(options=self.layers, name='Layer', width=200)
 
@@ -395,22 +386,6 @@ class EUG:
                                                                 width=200)
 
         self._prepare_data_embedding_view('')
-        # self.graph_view_scatter_selection1d = hv.streams.Selection1D()
-        # self.graph_view_scatter = hv.DynamicMap(pn.bind(draw.draw_embedding_view, 
-        #                                                 layer=self.layer_selection, 
-        #                                                 colors=self.colors,
-        #                                                 threshold=self.embedding_view_thr_slider,), 
-        #     streams=[self.groups_stream, 
-        #              self.data_embedding_view_xy,
-        #              self.data_embedding_view,
-        #              self.graph_view_scatter_selection1d,
-        #              ]) \
-        #     .opts(
-        #           xaxis=None, yaxis=None, 
-        #             width=int(self.graph_view_width*0.6),
-        #             height=int(self.graph_view_height*0.95),
-        #           shared_axes=False,
-        #           )
         self.graph_view_scatter = hv.DynamicMap(pn.bind(draw.draw_embedding_view_scatter,
                                                         layer=self.layer_selection,
                                                         colors=self.colors,),
@@ -423,7 +398,7 @@ class EUG:
 
         # watch it
         self.graph_view_scatter_selection1d.add_subscriber(self._graph_view_scatter_selection1d_subscriber) 
-        print('reach polys')
+        # print('reach polys')
         self.graph_view_polys = hv.DynamicMap(pn.bind(draw.draw_embedding_view_polys,
                                                       layer=self.layer_selection,
                                                       colors=self.colors,
@@ -432,7 +407,7 @@ class EUG:
                      self.data_embedding_view_xy,
                      self.data_embedding_view_polys,
                      ])
-        print('polys is fine')
+        # print('polys is fine')
         
         self.graph_view_square = hv.DynamicMap(pn.bind(draw.draw_embedding_view_square,
                                                        layer=self.layer_selection,),
@@ -442,71 +417,19 @@ class EUG:
                      ])
         
         self.graph_view_overlay = (self.graph_view_square * self.graph_view_scatter * self.graph_view_polys).opts(
-            width=int(self.graph_view_width*0.7),
-            height=int(self.graph_view_height*0.95),
+            width=int(self.node_selection_view_width*0.26),
+            height=int(self.node_selection_view_height*0.95),
             shared_axes=False,
         ) 
         
         self.graph_view_legend = hv.DynamicMap(pn.bind(draw.draw_embedding_view_legend,
                                                        colors=self.colors,),
             streams=[self.groups_stream]).opts(
-                width=int(self.graph_view_width*0.2),
+                width=int(self.graph_view_width*0.17),
                 height=int(self.graph_view_height*0.95),
             )
-        # self.graph_view_legend = pn.pane.HoloViews()
-        # self.graph_view_legend.object = draw.draw_embedding_view_legend(colors=self.colors,
-        #                                                                 groups=self.groups_stream.groups)
-
-        # self.graph_view_xdist = hv.DynamicMap(pn.bind(draw.draw_distribution, layer=self.layer_selection, sens=self.sens, sens_names=self.sens_names, 
-        #     colors=self.colors, x_or_y='x'),
-        #     streams=[self.data_graph_view]) \
-        #     .opts(height=int(wh_graph_view*0.25))
-
-        # self.graph_view_ydist = hv.DynamicMap(pn.bind(draw.draw_distribution, layer=self.layer_selection, sens=self.sens, sens_names=self.sens_names,
-        #     colors=self.colors, x_or_y='y'),
-        #     streams=[self.data_graph_view]) \
-        #     .opts(width=int(wh_graph_view*0.25))
-
-        # scatter = (self.graph_view_scatter + self.graph_view_legend).opts(
-        #     hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
-        # )
-        
-        self.graph_view = pn.Card(
-            # self.graph_view_scatter << self.graph_view_ydist << self.graph_view_xdist,
-            # self.graph_view_scatter + self.graph_view_legend,
-            pn.Row(
-                # self.graph_view_scatter,
-                self.graph_view_legend,   
-                self.graph_view_overlay,
-            ),
-            # (self.graph_view_overlay + self.graph_view_legend), 
-            # scatter,
-            hide_header=True,
-            name='Embedding View',
-            # height=int(height/2-80), 
-            # width=int(width/3),
-            height=self.graph_view_height,
-            width=self.graph_view_width,
-            )
-        
-        self.graph_view_widgets = pn.WidgetBox(
-            self.layer_selection, 
-            self.projection_selection,
-            self.node_sample_size_slider,
-            sample_button,
-            # width=int(width/3), 
-            # height=int(height/2-80),
-            height=self.graph_view_height,
-            width=self.graph_view_width,
-            name='Settings',
-            )
-
-        # legend = hv.DynamicMap(pn.bind(draw.draw_legend, sens_name=self.sens_name_selector, colors=self.colors), streams=[self.data_legend])
-
-        # edge_legend = draw.draw_edge_legend()
 
 ### fairness metric view
-        print('reach fairness metric view')
         self.fairness_metric_view_chart = pn.pane.HoloViews()
         self.fairness_metric_view_chart_column = pn.Column(self.fairness_metric_view_chart)
 
@@ -521,18 +444,15 @@ class EUG:
                                                                         ])
         self.fairness_metric_view_range_bar = draw.draw_fairness_metric_view_range_bar()
         self.fairness_metric_view_bar = (self.fairness_metric_view_value_bar * self.fairness_metric_view_range_bar).opts(
-            width=int(self.fairness_metric_view_width*0.5),
-            height=int(self.fairness_metric_view_height*0.95),
+            width=int(self.fairness_metric_view_width*0.93),
+            height=int(self.fairness_metric_view_height*0.4),
         )
         self.fairness_metric_view_value_bar_selection1d = hv.streams.Selection1D(source=self.fairness_metric_view_value_bar)
         self.fairness_metric_view_value_bar_selection1d.add_subscriber(self._update_fairness_metric_detail)
 
         self.fairness_metric_view = pn.Card(
-            pn.Row(
-                # pn.Column(*self.items), 
-                pn.Column(self.fairness_metric_view_bar), 
-                self.fairness_metric_view_chart_column,
-                ),
+            pn.Column(self.fairness_metric_view_bar), 
+            self.fairness_metric_view_chart_column,
             hide_header=True,
             name='Fairness Metric View',
             # height=int(height/2-80),
@@ -540,13 +460,8 @@ class EUG:
             height=self.fairness_metric_view_height,
             width=self.fairness_metric_view_width,
         )
-        print('fairness metric view is fine')
 
 ### correlation view
-        print('reach correlation view')
-        # self.contributions_selected_nodes_stream = ContributionsSelectedNodes()
-        # self.contributions_selected_nodes_stream.add_subscriber(self._contributions_selected_nodes_stream_subscriber)
-        # feat_train = self.feat[self.train_mask].cpu().numpy()
         feat_np = self.feat.cpu().numpy()
 
         options_dict = {f'Hop-{i+1}': i for i in range(self.max_hop)}
@@ -554,16 +469,7 @@ class EUG:
                                                             width=int(self.correlation_view_width*0.93),
             )
 
-        # self.correlation_view_latex1 = pn.pane.LaTeX('Bias Contributions')
-
-        # self.correlation_view_latex2 = pn.pane.LaTeX('0.00%') 
-        print('correlation view is fine')  
-
 ### attribute view
-        # print('begin sleep')
-        # time.sleep(300)
-        # print('end sleep')
-        print('reach attribute view')
         # overview
         feat_np = self.feat.cpu().numpy()
         self.columns_categorical = util.check_unique_values(feat_np)
@@ -603,7 +509,6 @@ class EUG:
                                                                  self.groups_stream,
                                                                  self.selected_attrs_ls_stream,])
         self.attribute_view_overview = (self.attribute_view_overview_all * self.attribute_view_overview_selected)
-        print('attribute view is fine')
 
 ### dependency view
         self.dependency_view_attr_sens = pn.pane.HoloViews()
@@ -631,40 +536,11 @@ class EUG:
                                                                           )
 
 ### density view
-        # Create the scatter plot
-
-        # v slow
-        # print('reach process graph')
-        # self.extract_communities_args = community.process_graph(self.adj0)
-        # print('process graph is fine')
-        # self._save_extract_communities_args()
-        # loaded_extract_communities_args = self._load_extract_communities_args()
-        # # deep copy self.extract_communities_args, which is a tuple
-        # self.node_communities = community.extract_communities(
-        #                                                     # community.Tree(), 
-        #     self.extract_communities_args[0], 
-        #                                                     #   *loaded_extract_communities_args, 
-        #                                                     #   loaded_extract_communities_args[0], 
-        #                                                     #   loaded_extract_communities_args[1], 
-        #                                                     self.extract_communities_args[1], 
-        #                                                     self.extract_communities_args[2], 
-        #                                                     self.extract_communities_args[3], 
-        #                                                       0.5)
-        # print('communities is fine')
-
         # v fast
-        print('reach process graph')
         self.extract_communities_args = community.process_graph(self.adj0)
-        print('process graph is fine')
         # deep copy self.extract_communities_args, which is a tuple
         self.node_communities = community.extract_communities(self.extract_communities_args,
                                                               0.5)
-        print('communities is fine')
-
-        # self.node_communities = community.extract_communities(community.Tree(), 
-        #                                                       *copy.deepcopy(self.extract_communities_args[1: 3]), 
-        #                                                       self.extract_communities_args[3], 
-        #                                                       0.5)
         self.communities = []
         for indices in self.node_communities:
             # Convert set of indices to sorted list for slicing
@@ -680,8 +556,8 @@ class EUG:
         # self.density_view_scatter = draw.draw_density_view_scatter(graph_metrics) \
         self.density_view_scatter = hv.DynamicMap(draw.draw_density_view_scatter,
                                                   streams=[self.data_density_view]).opts(
-                  width=int(self.density_view_width*0.93), 
-                  height=int(self.density_view_height*0.95)-60,
+                  width=int(self.node_selection_view_width*0.3), 
+                  height=int(self.node_selection_view_height*0.93)-60,
                   shared_axes=False,
                   )
         
@@ -689,45 +565,29 @@ class EUG:
         # watch it
         self.density_view_scatter_selection1d.add_subscriber(self._update_selected_communities_dropdown)
 
-        self.selected_communities_dropdown = pn.widgets.Select(name='Selected Nodes', options=[None],
+        self.selected_communities_dropdown = pn.widgets.Select(name='Tapped Communities', options=[None],
                                                                width=int(self.correlation_view_width*0.93))
         # watch it
         self.selected_communities_dropdown.param.watch(self._selected_communities_dropdown_callback, 'value')
         # Slider for min_threshold
-        self.min_threshold_slider = pn.widgets.FloatSlider(name='Minimum Density Threshold', start=0.0, end=1.0, step=0.01, value=0.5, width=200)
+        avg_density = self.adj0._nnz() / (self.n_nodes * (self.n_nodes - 1))
+        overall_density_string = f'Overall Density: {avg_density:.2f}'
+        self.min_threshold_slider = pn.widgets.FloatSlider(name=f'Min Density Threshold', start=0.0, end=1.0, step=0.01, value=0.5, width=200)
 
         # Button to recalculate and redraw plots
         min_threshold_slider_button = pn.widgets.Button(name='Update Communities')
 
         min_threshold_slider_button.on_click(self._min_threshold_slider_button_callback)
-
-        self.density_view_widgets = pn.WidgetBox(
-            self.min_threshold_slider, 
-            min_threshold_slider_button,
-            height=self.density_view_height,
-            width=self.density_view_width,
-            name='Settings',
-            )
-
-        self.density_view = pn.Card(
-            self.selected_communities_dropdown,
-            self.density_view_scatter,
-            hide_header=True,
-            name='Density View',
-            # height=int(height/2-80),
-            # width=int(width/3),
-            height=self.density_view_height,
-            width=self.density_view_width,
-            )
         
 ### diagnostic panel
         self.attr_selection_mode_button = pn.widgets.RadioButtonGroup(
             name='Selection Mode',
             options=['Single', 'Multiple'],
             value='Single',
+            width=130,  
         )
 
-        self.new_selection_button = pn.widgets.Button(name='New Selection')
+        self.new_selection_button = pn.widgets.Button(name='New Selection', width=130)
         self.new_selection_button.on_click(self._new_selection_button_callback)
 
         contribution_attrs = individual_bias.calc_attr_contributions(
@@ -781,12 +641,12 @@ class EUG:
                 pn.Column(self.dependency_view_attr_degree),
             ),
             hide_header=True,
-            name='Diagnostic Panel',
+            name='Diagnostic View',
             height=self.diagnostic_panel_height,
             width=self.diagnostic_panel_width,
         )
 
-### structural bias overview
+### node selection view
         # original scale
         degree_hist_frequencies = []
         degree_hist_edges = []
@@ -818,22 +678,28 @@ class EUG:
                                                                             scale=self.n_neighbors_scale_group),
                                                                      streams=[self.pre_selected_nodes_stream])
         self.structural_bias_overview_hist = (self.structural_bias_overview_hist_selected * self.structural_bias_overview_hist_all).opts(
-            width=int(self.structural_bias_overview_width*0.93),
-            height=int(self.structural_bias_overview_height*0.25),
+            width=int(self.node_selection_view_width*0.3),
+            height=int(self.node_selection_view_height*0.93)-60,  
         )
 
-        self.structural_bias_overview = pn.Card(
-            # self.correlation_view_latex1,
-            # self.correlation_view_latex2, 
-            self.correlation_view_selection,
-            self.structural_bias_overview_hist,
-            self.selected_communities_dropdown,
-            self.density_view_scatter,
+        self.node_selectin_view = pn.Card(
+            pn.Row(
+                self.graph_view_legend,   
+                self.graph_view_overlay,
+                pn.Column(
+                    self.correlation_view_selection,
+                    self.structural_bias_overview_hist,
+                ),
+                pn.Column(
+                    self.selected_communities_dropdown,
+                    self.density_view_scatter,
+                ),
+            ),
             hide_header=True,
-            name='Structural Bias Overview',
-            height=self.structural_bias_overview_height,
-            width=self.structural_bias_overview_width, 
-        )       
+            name='Node Selection View',
+            height=self.node_selection_view_height,
+            width=self.node_selection_view_width, 
+        )
 
 # control panel
         self.control_panel = pn.Card(
@@ -862,6 +728,7 @@ class EUG:
                 self.embedding_view_thr_slider,
                 pn.layout.Divider(),
                 '### Structural Bias Overview Settings',
+                overall_density_string,
                 self.min_threshold_slider, 
                 min_threshold_slider_button,
                 scroll=True,
@@ -876,21 +743,11 @@ class EUG:
         app[0, 0] = pn.Tabs(
             self.control_panel,
         )
-        # app[1, 0] = pn.Tabs(
-        #     self.correlation_view,
-        # )
-        # app[2, 0] = pn.Tabs(
-        #     self.density_view,
-        #     self.density_view_widgets,
         app[1: 3, 0] = pn.Tabs(
-            self.structural_bias_overview,
-        )
-        app[0, 1: 3] = pn.Tabs(
             self.fairness_metric_view,
         )
-        app[0, 3] = pn.Tabs(
-            self.graph_view,
-            # self.graph_view_widgets,
+        app[0, 1: 4] = pn.Tabs(
+            self.node_selectin_view
         )
         app[1: 3, 1: 4] = pn.Tabs(
             self.diagnostic_panel,
@@ -1096,7 +953,6 @@ class EUG:
         self.previous_attribute_view_overview_tap_x, self.previous_attribute_view_overview_tap_y = x, y
 
     def _update_selected_communities_dropdown(self, index): 
-        # print('in _update_selected_communities_dropdown')  
         if index:
             self.selected_communities_dropdown.options = [str(list(self.node_communities[i]))[1:-1] for i in index]
         else:
@@ -1139,7 +995,6 @@ class EUG:
 
     # def _update_fairness_metric_detail(self, event, metric_name):
     def _update_fairness_metric_detail(self, index):
-        # print('in _update_fairness_metric_detail')
         if index:
             metric_name = index[0]
             chart = hv.DynamicMap(pn.bind(draw.draw_fairness_metric_view_detail,
@@ -1153,11 +1008,11 @@ class EUG:
             if metric_name == 2 or metric_name == 6:
                 if len(self.fairness_metric_view_chart_column) == 1:
                     self.fairness_metric_view_chart_column.insert(0, self.fairness_metric_view_chart_eod_radio)
-                    chart.opts(width=int(self.fairness_metric_view_width*0.43), height=int(self.fairness_metric_view_height*0.77))
-            else:
-                if len(self.fairness_metric_view_chart_column) == 2:
-                    self.fairness_metric_view_chart_column.pop(0)  
-                chart.opts(width=int(self.fairness_metric_view_width*0.43), height=int(self.fairness_metric_view_height*0.95))
+                    chart.opts(width=int(self.fairness_metric_view_width*0.93), height=int(self.fairness_metric_view_height*0.45)) 
+            else:  
+                if len(self.fairness_metric_view_chart_column) == 2: 
+                    self.fairness_metric_view_chart_column.pop(0)   
+                chart.opts(width=int(self.fairness_metric_view_width*0.93), height=int(self.fairness_metric_view_height*0.55)) 
 
             self.fairness_metric_view_chart.object = chart
 
@@ -1330,12 +1185,11 @@ class EUG:
 
         min_thr, max_thr, polygons_lst, max_edges_lst = RangesetCategorical.pre_compute_contours(colormap, 
                                                                                                  xy, layer, groups)
-        print('pre contours is fine')
+        # print('pre contours is fine')
         # update polygons_lst, max_edges_lst in the data_embedding_view
         # self.data_embedding_view.event(polygons_lst=polygons_lst, max_edges_lst=max_edges_lst)
         self.data_embedding_view_polys.event(polygons_lst=polygons_lst, max_edges_lst=max_edges_lst)
         self.data_embedding_view_thr_range.event(min_thr=min_thr, max_thr=max_thr)
-        print('event done')
 
     def _update_thr_range(self, min_thr, max_thr):
         self.embedding_view_thr_slider.start = self.data_embedding_view_thr_range.min_thr
@@ -1343,7 +1197,6 @@ class EUG:
         self.embedding_view_thr_slider.value = (self.data_embedding_view_thr_range.max_thr - self.data_embedding_view_thr_range.min_thr) / 10
 
     def _selected_attrs_ls_stream_callback(self, selected_attrs_ls):
-        # print('in _selected_attrs_ls_stream_callback')
         if selected_attrs_ls[-1]:
             # update contributions_stream.contributions_selected_attrs[-1] according to the selected_attrs_ls[-1]
             contribution_selected_attrs = individual_bias.calc_attr_contributions(
@@ -1354,16 +1207,14 @@ class EUG:
                 groups=self.groups_stream.groups,
                 attr_indices=selected_attrs_ls[-1]
             )
-            # print(contribution_selected_attrs) 
             # self.contributions_stream.contributions_selected_attrs[-1] = contribution_selected_attrs
             contributions_selected_attrs = self.contributions_stream.contributions_selected_attrs.copy() 
             contributions_selected_attrs[-1] = contribution_selected_attrs
         else:
             contributions_selected_attrs = self.contributions_stream.contributions_selected_attrs.copy() 
             contributions_selected_attrs[-1] = 0.
-        # print(contributions_selected_attrs)
+
         self.contributions_stream.event(contributions_selected_attrs=contributions_selected_attrs) 
-        # print(self.contributions_stream.contributions_selected_attrs)
 
     def _save_extract_communities_args(self):
         # Determine the directory of the current file

@@ -10,6 +10,9 @@ import math
 # from torch.profiler import profile, record_function, ProfilerActivity
 # from . import util
 
+SEED = 42
+np.random.seed(SEED)
+
 
 def group_bias_contribution(adj, features, model, group, selected_nodes):
     if len(selected_nodes) < len(group):
@@ -126,6 +129,7 @@ def calc_structure_contribution(adj, model, g, feat, selected_nodes, groups):
     # Get the embeddings
     with torch.no_grad():
         embeddings = model(g, feat)
+
     ori_dist = avg_dist(groups, embeddings) 
 
     # remove the ith row and column from the adjacency matrix
@@ -168,6 +172,7 @@ def calc_structure_contribution(adj, model, g, feat, selected_nodes, groups):
         embeddings_new = model(g_new, feat)
 
     new_dist = avg_dist(groups, embeddings_new) 
+
     contributions = (ori_dist - new_dist) / ori_dist 
 
     return contributions
@@ -186,6 +191,7 @@ def avg_dist(group_new, pred):
             # compute the distance between the predictions
             dist = jsdist(pred_i, pred_j)
             dists.append(dist)
+
     # Compute the average distance
     avg_dist = np.mean(dists)
     return avg_dist
@@ -260,6 +266,11 @@ def gaussian_kde_pytorch(data, bw_method='scott'):
 
 
 def jsdist(set1, set2):
+    # if set1.shape[0] > 10000, downsample to 10000
+    if set1.shape[0] > 10000:
+        set1 = set1[np.random.choice(set1.shape[0], 10000, replace=False)]
+    if set2.shape[0] > 10000:
+        set2 = set2[np.random.choice(set2.shape[0], 10000, replace=False)]
     kde1 = gaussian_kde_pytorch(set1)
     kde2 = gaussian_kde_pytorch(set2)
 
@@ -275,11 +286,18 @@ def jsdist(set1, set2):
     pdf2 /= pdf2.sum()
 
     m = 0.5 * (pdf1 + pdf2)
+
     kl1 = torch.sum(pdf1 * torch.log(pdf1 / m))
     kl2 = torch.sum(pdf2 * torch.log(pdf2 / m))
+
     js_dist = torch.sqrt(0.5 * (kl1 + kl2))
 
-    return js_dist.item()
+    # return js_dist.item()
+    # if js_dist.item() is nan, return 0
+    if torch.isnan(js_dist):
+        return 0
+    else:
+        return js_dist.item()
 
 def mvnlogprob(dist: torch.distributions.multivariate_normal.MultivariateNormal, 
                inputs: torch.tensor):

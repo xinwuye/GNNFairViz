@@ -104,8 +104,8 @@ def process_graph(adj):
 
 def extract_communities(root_nodes, min_threshold):
     communities = []
-    # for temp_roots in tqdm(root_nodes):
-    for temp_root in root_nodes:
+    for temp_root in tqdm(root_nodes):
+    # for temp_root in root_nodes:
 		#Filtering Nodes as Per Density Threshold
         communities_tmp = extract_sub_graph(temp_root, min_threshold)
         communities.extend(communities_tmp)
