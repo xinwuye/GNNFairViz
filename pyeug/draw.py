@@ -436,7 +436,7 @@ def draw_attribute_view_violin(variable_data, feat_name, groups, selected_nodes)
     
     # Combine the variable and groups into a single DataFrame
     df = pd.concat([variable_data, groups], axis=1)
-    df = df.iloc[selected_nodes]
+    df = df.iloc[selected_nodes.astype(int)]
     # print(df)
     
     # Draw the violin plot for the specified feature, grouped by 'Group'
@@ -500,8 +500,8 @@ def draw_dependency_view_attr_sens_bar_selected(variable_data, feat_name, groups
         groups = pd.Series(groups, name="Group")
 
     # Select the specified nodes
-    variable_data = variable_data.iloc[selected_nodes]
-    groups = groups.iloc[selected_nodes]
+    variable_data = variable_data.iloc[selected_nodes.astype(int)]
+    groups = groups.iloc[selected_nodes.astype(int)]
 
     # Convert variable_data and groups to string to ensure proper concatenation
     variable_data = variable_data.astype(str)
@@ -572,7 +572,7 @@ def draw_attribute_view_overview_all(feat, groups, columns_categorical, hw_ratio
     # Calculate the center of each column
     column_centers = [sum(all_ns[:i+1]) - all_ns[i]/2 for i in range(m)]
     # create yticks using column_centers and all_unique_groups
-    yticks = [(c, all_unique_groups[i]) for i, c in enumerate(column_centers)]
+    # yticks = [(c, all_unique_groups[i]) for i, c in enumerate(column_centers)]
     custom_hover = HoverTool(tooltips=[('Attr.:', '@{ID}')])
     # Create the Rectangles plot
     plot = hv.Rectangles(rect_data, vdims=['Color', 'ID']).opts(
@@ -585,8 +585,8 @@ def draw_attribute_view_overview_all(feat, groups, columns_categorical, hw_ratio
                         # yticks=list(range(n)),  # Set y-axis ticks 
                         # yaxis=None,  # Hide y-axis
                         xaxis=None,  # Hide x-axis
-                        xlabel='Sensitive Group',  # X-axis label
-                        yticks=yticks,
+                        # xlabel='Sensitive Group',  # X-axis label
+                        # yticks=yticks,
                         line_width=0.1,
                         framewise=True,
                         tools=[custom_hover],
@@ -639,7 +639,7 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
     # Calculate the center of each column
     column_centers = [sum(all_ns[:i+1]) - all_ns[i]/2 for i in range(m)]
     # create yticks using column_centers and all_unique_groups
-    yticks = [(c, all_unique_groups[i]) for i, c in enumerate(column_centers)]
+    yticks = [(c, all_unique_groups[i] + f"({int(ns[i])}/{int(all_ns[i])})") for i, c in enumerate(column_centers)]
     # custom_hover = HoverTool(tooltips=[('Attr.:', '@{ID}')])
     # Create the Rectangles plot
     plot = hv.Rectangles(rect_data, vdims=['Color', 'ID']).opts(
@@ -859,7 +859,7 @@ def draw_dependency_view_attr_degree_violin(feat, computational_graph_degrees, s
     })
     
     # Copy selected nodes for a separate 'Selected' entry
-    df_selected = df_all.iloc[selected_nodes].copy()
+    df_selected = df_all.iloc[selected_nodes.astype(int)].copy()
     df_selected['selected'] = 'Selected'
     
     # Concatenate the original and selected data
@@ -899,7 +899,7 @@ def draw_dependency_view_degree_sens(groups, computational_graph_degrees, select
     })
     
     # Copy selected nodes for a separate 'Selected' entry
-    df_selected = df_all.iloc[selected_nodes].copy()
+    df_selected = df_all.iloc[selected_nodes.astype(int)].copy()
     df_selected['selected'] = 'Selected'
     
     # Concatenate the original and selected data
@@ -938,7 +938,7 @@ def draw_dependency_view_attr_sens_violin(feat, groups, selected_nodes):
     })
     
     # Copy selected nodes for a separate 'Selected' entry
-    df_selected = df_all.iloc[selected_nodes].copy()
+    df_selected = df_all.iloc[selected_nodes.astype(int)].copy()
     df_selected['selected'] = 'Selected'
     
     # Concatenate the original and selected data
@@ -1034,8 +1034,8 @@ def draw_dependency_view_attr_degree_scatter_selected(feat, computational_graph_
 #     if len(selected_nodes) == 0:
 #         data = computational_graph_degrees[hop][node_mask]
 #     else:
-#         node_mask = node_mask[selected_nodes]
-#         data = computational_graph_degrees[hop][selected_nodes][node_mask]
+#         node_mask = node_mask[selected_nodes.astype(int)]
+#         data = computational_graph_degrees[hop][selected_nodes.astype(int)][node_mask]
 #     edges = edges_ls[hop]
 #     frequencies, edges = np.histogram(data, bins=edges)
 #     hist = hv.Histogram((edges, frequencies)).opts(
@@ -1053,8 +1053,8 @@ def draw_dependency_view_attr_degree_scatter_selected(feat, computational_graph_
 
 
 def draw_attribute_view_correlation_hex(feat, individual_bias_metrics, selected_nodes, gridsize=30):
-    x_data = feat[selected_nodes]
-    y_data = individual_bias_metrics[selected_nodes]
+    x_data = feat[selected_nodes.astype(int)]
+    y_data = individual_bias_metrics[selected_nodes.astype(int)]
     return hv.HexTiles((x_data, y_data)).opts(opts.HexTiles(
         framewise=True, 
         gridsize=gridsize, 
@@ -1071,7 +1071,7 @@ def draw_attribute_view_correlation_hex(feat, individual_bias_metrics, selected_
 
 def draw_fairness_metric_view_value_bar(labels, groups, selected_nodes, predictions): 
     sens = groups
-    mask = selected_nodes
+    mask = selected_nodes.astype(int)
     predictions = predictions[mask]
     labels = labels[mask]
     sens = sens[mask]
@@ -1165,7 +1165,7 @@ def draw_fairness_metric_view_range_bar():
 
 
 def draw_fairness_metric_view_detail(metric_name, selected_nodes, groups, labels, predictions, eod_radio):
-    mask = selected_nodes
+    mask = selected_nodes.astype(int)
     predictions = predictions[mask]
     labels = labels[mask]
     sens = groups[mask]
@@ -1276,7 +1276,7 @@ def draw_structural_bias_overview_hist_selected(computational_graph_degrees, edg
     if len(selected_nodes) == 0:
         data = computational_graph_degrees[hop]
     else:
-        data = computational_graph_degrees[hop][selected_nodes]
+        data = computational_graph_degrees[hop][selected_nodes.astype(int)]
     if scale == 'Log':
         data = np.log(data + 1)
     edges = edges_dict[scale][hop]

@@ -145,6 +145,7 @@ class EUG:
         self.adj = adj.to(device)
         self.adj_mul_indices = []
         self.adj0, self.adj1, self.adj0_scipy, self.adj1_scipy = util.modify_sparse_tensor_scipy(adj)
+        self.adj0 = self.adj0.coalesce()
         self.feat = feat.to(device)
         self.n_feat = feat.shape[-1]
         self.sens = sens
@@ -203,52 +204,6 @@ class EUG:
         # self.feat_mask_fair = np.zeros(self.feat.shape[-1])
         self.layers = list(range(1, len(self.embeddings)+1))
 
-        # self.colors = ['#d2bb4c', '#b054c1', '#82cd53', '#626ccc', 
-        #     '#d05d2e', '#6bd4a3', '#ce478c', '#5c7d39', '#bf4b56', 
-        #     '#7ab7d5', '#a0714a', '#7b5d84', '#c2c6a4', '#d3a1c4', 
-        #     '#4e7670']
-        # self.colors = [
-        #     '#d05d2e', '#6bd4a3', '#ce478c', '#5c7d39', '#bf4b56', 
-        #     '#7ab7d5', '#a0714a', '#7b5d84', '#c2c6a4', '#d3a1c4', 
-        #     '#4e7670']
-        # self.colors = ['#D17474',  '#D19874', '#D1AB74',  '#D1B874', 
-        #     '#D1C474', '#D1D174', '#AEC66E',  '#86B766', '#519271', 
-        #     '#4A7682', '#54658C', '#615890', '#6E538D', '#834D89', 
-        #     '#AF6285'] 
-        # self.colors = [
-        #     '#AF6285',
-        #     '#D19874',
-        #     '#519271',
-        #     '#AEC66E',
-        #     '#6E538D',
-        #     '#4A7682', 
-        #     '#D1C474',
-        #     '#834D89', 
-        #     '#D1AB74',
-        #     '#D1D174',
-        #     '#615890',
-        #     '#86B766',
-        #     '#D17474',
-        #     '#54658C', 
-        #     '#D1B874']
-        # self.colors = ['#E7F9B5',
-        # '#FFD5B9',
-        # '#FFFFB9',
-        # '#FFB9B9',
-        # '#FFECB9',
-        # '#A4B4DA',
-        # '#FFF5B9',
-        # '#D39ED8',
-        # '#BDA3DA',
-        # '#EDACCA',
-        # '#B0A8DC',
-        # '#9CC8D4',
-        # '#C9F1AF',
-        # '#FFE3B9', 
-        # '#A1DDBF']
-        # self.colors = ['#F1B8B8', '#F1CEB8', '#F1DAB8', '#F1E2B8', '#F1E9B8', '#F1F1B8', 
-        #                '#D6E4AE', '#B5D4A1', '#81A995', '#738E96', '#7F89A1', '#8984A7', 
-        #                '#907FA3', '#9A799E', '#CB9AB0',]
         self.colors = ['#F1B8B8', '#81A995', '#F1E9B8', '#907FA3', '#F1DAB8', 
                        '#7F89A1', '#D6E4AE', '#CB9AB0', '#738E96', '#F1E2B8', 
                        '#9A799E', '#B5D4A1', '#F1CEB8', '#8984A7', '#F1F1B8', ]
@@ -276,6 +231,11 @@ class EUG:
         self.correlation_view_selection_continuous = None
 
         self.records = []
+
+        self.pre_compute_contours_cache = {}
+
+        options_dict = {f'Hop-{i+1}': i for i in range(self.max_hop)}
+        self.correlation_view_selection = pn.widgets.Select(name='Hops', options=options_dict,)
 
     def show(self):
         height = 900
@@ -332,11 +292,11 @@ class EUG:
         self.previous_data_selector_value = self.data_selector.value
 
         # latex for number of selected nodes
-        self.n_selected_nodes_latex = pn.pane.LaTeX(f'# of Selected Nodes: {self.n_nodes}/{self.n_nodes} (100%)')
+        self.n_selected_nodes_latex = pn.pane.LaTeX(f'# of Selected Nodes: {int(0)}/{self.n_nodes} (100%)')
 
 ### graph view
         # widget for graph view
-        self.layer_selection = pn.widgets.Select(options=self.layers, name='Layer', width=200)
+        self.layer_selection = pn.widgets.Select(options=self.layers, name='Layer', value=self.layers[-1], width=200)
 
         self.projection_selection = pn.widgets.Select(options=['UMAP', 'PCA', 't-SNE'], name='Projection', width=200)
         # watch projection selection
@@ -464,10 +424,10 @@ class EUG:
 ### correlation view
         feat_np = self.feat.cpu().numpy()
 
-        options_dict = {f'Hop-{i+1}': i for i in range(self.max_hop)}
-        self.correlation_view_selection = pn.widgets.Select(name='Hops', options=options_dict,
-                                                            width=int(self.correlation_view_width*0.93),
-            )
+        # options_dict = {f'Hop-{i+1}': i for i in range(self.max_hop)}
+        # self.correlation_view_selection = pn.widgets.Select(name='Hops', options=options_dict,
+        #                                                     width=int(self.correlation_view_width*0.93),
+        #     )
 
 ### attribute view
         # overview
@@ -516,12 +476,17 @@ class EUG:
 
         computational_graph_degrees = []
         for i in range(self.max_hop):
+            # print('i:', i)
+            # if i == 0:
+            #     adj_mul = self.adj0
+            # else:
+            #     adj_mul = torch.sparse.mm(adj_mul, self.adj0)
+            # d = adj_mul.sum(axis=1).to_dense()
             if i == 0:
-                adj_mul = self.adj0
+                d = self.adj0.sum(axis=1).unsqueeze(1)
             else:
-                adj_mul = torch.sparse.mm(adj_mul, self.adj0)
-            d = adj_mul.sum(axis=1).to_dense()
-            computational_graph_degrees.append(d)
+                d = torch.sparse.mm(self.adj0, d)
+            computational_graph_degrees.append(d.to_dense().squeeze())
         # convert computational_graph_degrees to a np array
         self.computational_graph_degrees = torch.stack(computational_graph_degrees).cpu().numpy()  
 
@@ -536,11 +501,15 @@ class EUG:
                                                                           )
 
 ### density view
+        # Slider for min_threshold
+        avg_density = self.adj0._nnz() / (self.n_nodes * (self.n_nodes - 1))
+        overall_density_string = f'Overall Density: {avg_density:.4f}'
+        self.min_threshold_slider = pn.widgets.FloatSlider(name=f'Min Density Threshold', start=0.0, end=1.0, step=0.01, value=0.2, width=200)
         # v fast
         self.extract_communities_args = community.process_graph(self.adj0)
         # deep copy self.extract_communities_args, which is a tuple
         self.node_communities = community.extract_communities(self.extract_communities_args,
-                                                              0.5)
+                                                              self.min_threshold_slider.value)
         self.communities = []
         for indices in self.node_communities:
             # Convert set of indices to sorted list for slicing
@@ -569,13 +538,9 @@ class EUG:
                                                                width=int(self.correlation_view_width*0.93))
         # watch it
         self.selected_communities_dropdown.param.watch(self._selected_communities_dropdown_callback, 'value')
-        # Slider for min_threshold
-        avg_density = self.adj0._nnz() / (self.n_nodes * (self.n_nodes - 1))
-        overall_density_string = f'Overall Density: {avg_density:.2f}'
-        self.min_threshold_slider = pn.widgets.FloatSlider(name=f'Min Density Threshold', start=0.0, end=1.0, step=0.01, value=0.5, width=200)
 
         # Button to recalculate and redraw plots
-        min_threshold_slider_button = pn.widgets.Button(name='Update Communities')
+        min_threshold_slider_button = pn.widgets.Button(name='Update')
 
         min_threshold_slider_button.on_click(self._min_threshold_slider_button_callback)
         
@@ -649,22 +614,22 @@ class EUG:
 ### node selection view
         # original scale
         degree_hist_frequencies = []
-        degree_hist_edges = []
+        self.degree_hist_edges = []
         for i in range(self.max_hop):
             d = self.computational_graph_degrees[i]
             frequencies, edges = np.histogram(d, 20)
             degree_hist_frequencies.append(frequencies)
-            degree_hist_edges.append(edges)
+            self.degree_hist_edges.append(edges)
         # log scale
         degree_hist_frequencies_log = []
-        degree_hist_edges_log = []
+        self.degree_hist_edges_log = []
         for i in range(self.max_hop):
             d = self.computational_graph_degrees[i]
             frequencies, edges = np.histogram(np.log(d+1), 20)
             degree_hist_frequencies_log.append(frequencies)
-            degree_hist_edges_log.append(edges)
+            self.degree_hist_edges_log.append(edges)
         frequencies_dict = {'Original': degree_hist_frequencies, 'Log': degree_hist_frequencies_log}
-        edges_dict = {'Original': degree_hist_edges, 'Log': degree_hist_edges_log}
+        edges_dict = {'Original': self.degree_hist_edges, 'Log': self.degree_hist_edges_log}
         self.structural_bias_overview_hist_all = hv.DynamicMap(pn.bind(draw.draw_structural_bias_overview_hist_all,
                                                                        frequencies_dict=frequencies_dict,
                                                                        edges_dict=edges_dict,
@@ -679,15 +644,18 @@ class EUG:
                                                                      streams=[self.pre_selected_nodes_stream])
         self.structural_bias_overview_hist = (self.structural_bias_overview_hist_selected * self.structural_bias_overview_hist_all).opts(
             width=int(self.node_selection_view_width*0.3),
-            height=int(self.node_selection_view_height*0.93)-60,  
+            height=int(self.node_selection_view_height*0.95),  
         )
+
+        self.structural_bias_overview_hist_all_selection1d = hv.streams.Selection1D(source=self.structural_bias_overview_hist_all)
+        self.structural_bias_overview_hist_all_selection1d.add_subscriber(self._structural_bias_overview_hist_all_selection1d_subscriber)
 
         self.node_selectin_view = pn.Card(
             pn.Row(
                 self.graph_view_legend,   
                 self.graph_view_overlay,
                 pn.Column(
-                    self.correlation_view_selection,
+                    # self.correlation_view_selection,
                     self.structural_bias_overview_hist,
                 ),
                 pn.Column(
@@ -720,17 +688,19 @@ class EUG:
                 '#### Scale of # of Neighbors',
                 self.n_neighbors_scale_group,
                 pn.layout.Divider(), 
-                '### Embedding View Settings',
+                '### Node Selection View Settings',
                 self.layer_selection, 
                 self.projection_selection,
-                self.node_sample_size_slider,
-                sample_button,
+                pn.Row(
+                    self.node_sample_size_slider,
+                    sample_button,
+                ),
                 self.embedding_view_thr_slider,
-                pn.layout.Divider(),
-                '### Structural Bias Overview Settings',
                 overall_density_string,
-                self.min_threshold_slider, 
-                min_threshold_slider_button,
+                pn.Row(
+                    self.min_threshold_slider, 
+                    min_threshold_slider_button,
+                ),
                 scroll=True,
             ),
             name='Control Panel',
@@ -834,43 +804,6 @@ class EUG:
                                                                                         height=int(self.diagnostic_panel_height*0.45),
                                                                                         width=int(self.diagnostic_panel_width*0.3),
                                                                                     )
-                            
-                            # # get the unique values of feat
-                            # unique_values = np.unique(feat)
-                            # dependency_view_attr_degree_hists = None
-                            
-                            # for i, unique_value in enumerate(unique_values):
-                            #     node_mask = feat == unique_value
-
-                            #     hist_all = hv.DynamicMap(pn.bind(draw.draw_dependency_view_attr_degree_hist_all,
-                            #                                         computational_graph_degrees=self.computational_graph_degrees,
-                            #                                         edges_ls=self.degree_hist_edges,
-                            #                                         hop=self.correlation_view_selection,
-                            #                                         node_mask=node_mask,
-                            #                                         attr_val=str(unique_value)),)
-                            #     hist_selected = hv.DynamicMap(pn.bind(draw.draw_dependency_view_attr_degree_hist_selected,
-                            #                                             computational_graph_degrees=self.computational_graph_degrees,
-                            #                                             edges_ls=self.degree_hist_edges,
-                            #                                             hop=self.correlation_view_selection,
-                            #                                             node_mask=node_mask,
-                            #                                             attr_val=str(unique_value),),
-                            #                                         streams=[self.pre_selected_nodes_stream])
-                            #     if i + 1 < len(unique_values):
-                            #         hist = (hist_selected * hist_all).opts(
-                            #             width=int(self.diagnostic_panel_width*0.3),
-                            #             height=int(self.diagnostic_panel_height*0.45 / len(unique_values)),
-                            #         )
-                            #     else:
-                            #         hist = (hist_selected * hist_all).opts(
-                            #             width=int(self.diagnostic_panel_width*0.3),
-                            #             height=int(self.diagnostic_panel_height*0.45 / len(unique_values)),
-                            #         )
-                            #     if dependency_view_attr_degree_hists is None:
-                            #         dependency_view_attr_degree_hists = hist
-                            #     else:
-                            #         dependency_view_attr_degree_hists += hist
-                            # self.dependency_view_attr_degree.object = dependency_view_attr_degree_hists.cols(1)
-                            
                         else:
                             self.dependency_view_attr_sens.object = hv.DynamicMap(pn.bind(draw.draw_dependency_view_attr_sens_violin,
                                                                                    feat=feat),
@@ -954,7 +887,7 @@ class EUG:
 
     def _update_selected_communities_dropdown(self, index): 
         if index:
-            self.selected_communities_dropdown.options = [str(list(self.node_communities[i]))[1:-1] for i in index]
+            self.selected_communities_dropdown.options = [None] + [str(list(self.node_communities[i]))[1:-1] for i in index]
         else:
             self.selected_communities_dropdown.options = [None] 
         self.selected_communities_dropdown.value = self.selected_communities_dropdown.options[0]
@@ -995,6 +928,7 @@ class EUG:
 
     # def _update_fairness_metric_detail(self, event, metric_name):
     def _update_fairness_metric_detail(self, index):
+        # print('index:', index)
         if index:
             metric_name = index[0]
             chart = hv.DynamicMap(pn.bind(draw.draw_fairness_metric_view_detail,
@@ -1015,6 +949,8 @@ class EUG:
                 chart.opts(width=int(self.fairness_metric_view_width*0.93), height=int(self.fairness_metric_view_height*0.55)) 
 
             self.fairness_metric_view_chart.object = chart
+        else:
+            self.fairness_metric_view_chart.object = None
 
 
     def _min_threshold_slider_button_callback(self, event):
@@ -1043,8 +979,9 @@ class EUG:
     def _pre_selected_nodes_stream_subscriber(self, selected_nodes):
         if len(selected_nodes) > 0:
             selected_alpha = np.zeros(self.n_nodes)
-            selected_alpha[selected_nodes] = 1
-            selected_alpha[selected_alpha == 0] = 0 
+            # selected_alpha[selected_nodes] = 1
+            selected_alpha[self.pre_selected_nodes_stream.selected_nodes.astype(int)] = 1
+            # selected_alpha[selected_alpha == 0] = 0 
             # element-wise multiplication of the selected_alpha and the sampled_alpha
             alpha = selected_alpha * self.sampled_alpha
         else:
@@ -1175,16 +1112,21 @@ class EUG:
             self.data_embedding_view_xy.event(xy=np.array(self.embeddings_pca))
 
     def _prepare_data_embedding_view(self, event=None, xy=None, groups=None):
-        xy = self.data_embedding_view_xy.xy
         layer = self.layer_selection.value - 1
-        groups = self.groups_stream.groups
+        self.correlation_view_selection.value = layer
+        
+        if (tuple(self.sens_name_selector.value), layer) not in self.pre_compute_contours_cache:
+            xy = self.data_embedding_view_xy.xy
+            groups = self.groups_stream.groups
+            sens_selected = groups
+            sens_selected_unique = np.unique(sens_selected)
+            colormap = {sens_selected_unique[i]: self.colors[i] for i in range(len(sens_selected_unique))}
 
-        sens_selected = groups
-        sens_selected_unique = np.unique(sens_selected)
-        colormap = {sens_selected_unique[i]: self.colors[i] for i in range(len(sens_selected_unique))}
-
-        min_thr, max_thr, polygons_lst, max_edges_lst = RangesetCategorical.pre_compute_contours(colormap, 
+            min_thr, max_thr, polygons_lst, max_edges_lst = RangesetCategorical.pre_compute_contours(colormap, 
                                                                                                  xy, layer, groups)
+            self.pre_compute_contours_cache[(tuple(self.sens_name_selector.value), layer)] = (min_thr, max_thr, polygons_lst, max_edges_lst)
+        else:
+            min_thr, max_thr, polygons_lst, max_edges_lst = self.pre_compute_contours_cache[(tuple(self.sens_name_selector.value), layer)]
         # print('pre contours is fine')
         # update polygons_lst, max_edges_lst in the data_embedding_view
         # self.data_embedding_view.event(polygons_lst=polygons_lst, max_edges_lst=max_edges_lst)
@@ -1262,6 +1204,8 @@ class EUG:
         })   
 
     def _graph_view_scatter_selection1d_subscriber(self, index):
+        # device of self.adj0
+        device = self.adj0.device
         if index:
             if len(index) > 1:
                 # self.selected_nodes_stream.event(selected_nodes=np.array(index))
@@ -1269,10 +1213,19 @@ class EUG:
                 self.pre_selected_nodes_stream.event(selected_nodes=np.union1d(pre_selected_nodes, np.array(index)))
             else:
                 idx = index[0]
-                adj_mul_indices_current = self.adj_mul_indices[self.layer_selection.value - 1]
-                selected_nodes = adj_mul_indices_current[1, adj_mul_indices_current[0] == idx].cpu().numpy()
-                if idx not in selected_nodes:
-                    selected_nodes = np.append(selected_nodes, idx)
+                selected_nodes = torch.tensor([idx]).to(device)
+                for i in range(self.max_hop):
+                    if i == 0:
+                        neigh_i = self.adj0[idx].unsqueeze(0)
+                    else:
+                        neigh_i = torch.mm(neigh_i, self.adj0)
+                    selected_nodes = torch.cat((selected_nodes, neigh_i.coalesce().indices()[1]))
+                selected_nodes = torch.unique(selected_nodes).cpu().numpy().astype(int)
+                # adj_mul_indices_current = self.adj_mul_indices[self.layer_selection.value - 1]
+                # selected_nodes = adj_mul_indices_current[1, adj_mul_indices_current[0] == idx].cpu().numpy()
+                # if idx not in selected_nodes:
+                #     selected_nodes = np.append(selected_nodes, idx)
+
                 # self.selected_nodes_stream.event(selected_nodes=selected_nodes)
                 pre_selected_nodes = self.pre_selected_nodes_stream.selected_nodes
                 self.pre_selected_nodes_stream.event(selected_nodes=np.union1d(pre_selected_nodes, selected_nodes))
@@ -1291,6 +1244,27 @@ class EUG:
 
     def _node_selection_clear_control_panel_button_callback(self, event):
         self.pre_selected_nodes_stream.event(selected_nodes=np.array([]))
-        self.selected_nodes_stream.event(selected_nodes=self.node_indices)
+        if len(self.selected_nodes_stream.selected_nodes) < self.n_nodes:
+            self.selected_nodes_stream.event(selected_nodes=self.node_indices)
+        
+        # options = self.selected_communities_dropdown.options
+        # if None not in options:
+        #     options.insert(0, None)
+        #     self.selected_communities_dropdown.options = options
+        self.selected_communities_dropdown.value = None
+        print('options:', self.selected_communities_dropdown.options)
 
-    # def _n_neighbors_scale_group_callback(self, event):
+    def _structural_bias_overview_hist_all_selection1d_subscriber(self, index):
+        if index:
+            layer = self.correlation_view_selection.value
+            if self.n_neighbors_scale_group.value == 'Original':
+                min_degree = self.degree_hist_edges[layer][index[0]]
+                max_degree = self.degree_hist_edges[layer][index[-1] + 1]
+                selected_nodes = np.where((self.computational_graph_degrees[layer] >= min_degree) & (self.computational_graph_degrees[layer] < max_degree))[0]
+            else:
+                min_degree = self.degree_hist_edges_log[layer][index[0]]
+                max_degree = self.degree_hist_edges_log[layer][index[-1] + 1]
+                log_degrees = np.log(self.computational_graph_degrees[layer] + 1)
+                selected_nodes = np.where((log_degrees >= min_degree) & (log_degrees < max_degree))[0]
+            pre_selected_nodes = self.pre_selected_nodes_stream.selected_nodes
+            self.pre_selected_nodes_stream.event(selected_nodes=np.union1d(pre_selected_nodes, selected_nodes))

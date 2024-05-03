@@ -690,7 +690,8 @@ def analyze_bias(feat, groups, columns_categorical, selected_nodes):
     overall_bias_indicator = np.zeros(m, dtype=bool)
 
     if num_groups > 1:
-        for i in tqdm(range(m)):
+        # for i in tqdm(range(m)):
+        for i in range(m):
             variable_data = feat_selected.iloc[:, i]
             if columns_categorical[i]:  # If the column is categorical
                 contingency_table = pd.crosstab(variable_data, groups_selected)
@@ -706,7 +707,11 @@ def analyze_bias(feat, groups, columns_categorical, selected_nodes):
                         bias_indicator[i, j] = p <= 0.05
             else:
                 df = pd.concat([variable_data, groups_selected], axis=1, keys=['Data', 'Group'])
-                kruskal_stat, kruskal_p = kruskal(*[group['Data'].values for name, group in df.groupby('Group')])
+                # check if all the values in the Data col is the same
+                if df['Data'].nunique() > 1:
+                    kruskal_stat, kruskal_p = kruskal(*[group['Data'].values for name, group in df.groupby('Group')])
+                else:
+                    kruskal_p = 1.0
                 if kruskal_p <= 0.05:
                     overall_bias_indicator[i] = True
 
@@ -733,11 +738,13 @@ def calc_contributions(model, g, feat, selected_nodes, groups):
 
     # for each column in feat
     contributions = np.zeros(n_feat)
-    for i in range(n_feat):
+    for i in tqdm(range(n_feat)):
         feat_clone = feat.clone().detach()
         feat_clone[..., selected_nodes, i] = feat_mean[i]
         with torch.no_grad():
             embeddings_perturbed = model(g, feat_clone)
+        # if i == 0:
+        #     print('embeddings_perturbed:', embeddings_perturbed[:10])
         dist_perturbed = individual_bias.avg_dist(groups, embeddings_perturbed)
         contributions[i] = dist_perturbed
     contributions = (ori_dist - contributions) / ori_dist 

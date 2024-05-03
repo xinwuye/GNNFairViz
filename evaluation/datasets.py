@@ -336,6 +336,7 @@ class Facebook(Dataset):
         self.idx_val_ = torch.LongTensor(idx_val)
         self.idx_test_ = torch.LongTensor(idx_test)
         self.labels_ = torch.LongTensor(labels)
+        self.sens_names_ = ["Gender"]
 
         # self.features_ = torch.cat([self.features_, self.sens_.unsqueeze(-1)], -1)
         self.adj_ = mx_to_torch_sparse_tensor(adj)
@@ -1627,6 +1628,134 @@ class Citeseer(Dataset):
         return G, adj, X, sensitive, test_edges_true, test_edges_false, nodelist
 
 
+# class German(Dataset):
+#     def __init__(self):
+#         super(German, self).__init__()
+#         (
+#             adj,
+#             features,
+#             labels,
+#             edges,
+#             sens,
+#             idx_train,
+#             idx_val,
+#             idx_test,
+#             sens_idx,
+#         ) = self.load_german("german")
+
+#         node_num = features.shape[0]
+
+#         idx_train = torch.LongTensor(idx_train)
+#         idx_val = torch.LongTensor(idx_val)
+#         idx_test = torch.LongTensor(idx_test)
+#         labels = torch.LongTensor(labels)
+#         features = self.feature_norm(features)
+#         adj = mx_to_torch_sparse_tensor(adj, is_sparse=True)
+#         self.adj_ = adj
+#         self.features_ = features
+#         self.labels_ = labels
+#         self.idx_train_ = idx_train
+#         self.idx_val_ = idx_val
+#         self.idx_test_ = idx_test
+#         self.sens_ = sens
+#         self.sens_idx_ = sens_idx
+
+#     def feature_norm(self, features):
+#         min_values = features.min(axis=0)[0]
+#         max_values = features.max(axis=0)[0]
+#         return 2 * (features - min_values).div(max_values - min_values) - 1
+
+#     def load_german(
+#         self,
+#         dataset,
+#         sens_attr="Gender",
+#         predict_attr="GoodCustomer",
+#         path="./dataset/german/",
+#         label_number=100,
+#     ):
+#         # print('Loading {} dataset from {}'.format(dataset, path))
+#         self.path_name = "german"
+#         if not os.path.exists(os.path.join(self.root, self.path_name)):
+#             os.makedirs(os.path.join(self.root, self.path_name))
+
+#         if not os.path.exists(os.path.join(self.root, self.path_name, "german.csv")):
+#             url = "https://raw.githubusercontent.com/PyGDebias-Team/data/main/2023-7-26/german/german.csv"
+#             file_name = "german.csv"
+#             self.download(url, file_name)
+#         if not os.path.exists(
+#             os.path.join(self.root, self.path_name, "german_edges.txt")
+#         ):
+#             url = "https://raw.githubusercontent.com/PyGDebias-Team/data/main/2023-7-26/german/german_edges.txt"
+#             file_name = "german_edges.txt"
+#             self.download(url, file_name)
+
+#         idx_features_labels = pd.read_csv(
+#             os.path.join(self.root, self.path_name, "{}.csv".format(dataset))
+#         )
+#         header = list(idx_features_labels.columns)
+#         header.remove(predict_attr)
+#         header.remove("OtherLoansAtStore")
+#         header.remove("PurposeOfLoan")
+
+#         # Sensitive Attribute
+#         idx_features_labels["Gender"][idx_features_labels["Gender"] == "Female"] = 1
+#         idx_features_labels["Gender"][idx_features_labels["Gender"] == "Male"] = 0
+
+#         edges_unordered = np.genfromtxt(
+#             os.path.join(self.root, self.path_name, f"{dataset}_edges.txt")
+#         ).astype("int")
+
+#         features = sp.csr_matrix(idx_features_labels[header], dtype=np.float32)
+#         labels = idx_features_labels[predict_attr].values
+#         labels[labels == -1] = 0
+
+#         idx = np.arange(features.shape[0])
+#         idx_map = {j: i for i, j in enumerate(idx)}
+#         edges = np.array(
+#             list(map(idx_map.get, edges_unordered.flatten())), dtype=int
+#         ).reshape(edges_unordered.shape)
+
+#         adj = sp.coo_matrix(
+#             (np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])),
+#             shape=(labels.shape[0], labels.shape[0]),
+#             dtype=np.float32,
+#         )
+#         # build symmetric adjacency matrix
+#         adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
+
+#         adj = adj + sp.eye(adj.shape[0])
+
+#         features = torch.FloatTensor(np.array(features.todense()))
+#         labels = torch.LongTensor(labels)
+
+#         import random
+
+#         random.seed(20)
+#         label_idx_0 = np.where(labels == 0)[0]
+#         label_idx_1 = np.where(labels == 1)[0]
+#         random.shuffle(label_idx_0)
+#         random.shuffle(label_idx_1)
+
+#         idx_train = np.append(
+#             label_idx_0[: min(int(0.5 * len(label_idx_0)), label_number // 2)],
+#             label_idx_1[: min(int(0.5 * len(label_idx_1)), label_number // 2)],
+#         )
+#         idx_val = np.append(
+#             label_idx_0[int(0.5 * len(label_idx_0)) : int(0.75 * len(label_idx_0))],
+#             label_idx_1[int(0.5 * len(label_idx_1)) : int(0.75 * len(label_idx_1))],
+#         )
+#         idx_test = np.append(
+#             label_idx_0[int(0.75 * len(label_idx_0)) :],
+#             label_idx_1[int(0.75 * len(label_idx_1)) :],
+#         )
+
+#         sens = idx_features_labels[sens_attr].values.astype(int)
+#         sens = torch.FloatTensor(sens)
+#         idx_train = torch.LongTensor(idx_train)
+#         idx_val = torch.LongTensor(idx_val)
+#         idx_test = torch.LongTensor(idx_test)
+
+#         return adj, features, labels, edges, sens, idx_train, idx_val, idx_test, 0
 class German(Dataset):
     def __init__(self):
         super(German, self).__init__()
@@ -1639,7 +1768,8 @@ class German(Dataset):
             idx_train,
             idx_val,
             idx_test,
-            sens_idx,
+            feat_names, 
+            sens_names
         ) = self.load_german("german")
 
         node_num = features.shape[0]
@@ -1657,7 +1787,9 @@ class German(Dataset):
         self.idx_val_ = idx_val
         self.idx_test_ = idx_test
         self.sens_ = sens
-        self.sens_idx_ = sens_idx
+        # self.sens_idx_ = sens_idx
+        self.feat_names_ = feat_names
+        self.sens_names_ = sens_names
 
     def feature_norm(self, features):
         min_values = features.min(axis=0)[0]
@@ -1695,6 +1827,7 @@ class German(Dataset):
         header.remove(predict_attr)
         header.remove("OtherLoansAtStore")
         header.remove("PurposeOfLoan")
+        header.remove(sens_attr)
 
         # Sensitive Attribute
         idx_features_labels["Gender"][idx_features_labels["Gender"] == "Female"] = 1
@@ -1753,10 +1886,144 @@ class German(Dataset):
         idx_train = torch.LongTensor(idx_train)
         idx_val = torch.LongTensor(idx_val)
         idx_test = torch.LongTensor(idx_test)
+        feat_names = header
+        sens_names = [sens_attr]
 
-        return adj, features, labels, edges, sens, idx_train, idx_val, idx_test, 0
+        return adj, features, labels, edges, sens, idx_train, idx_val, idx_test, feat_names, sens_names
 
 
+# class Bail(Dataset):
+#     def __init__(self):
+#         super(Bail, self).__init__()
+#         (
+#             adj,
+#             features,
+#             labels,
+#             edges,
+#             sens,
+#             idx_train,
+#             idx_val,
+#             idx_test,
+#             sens_idx,
+#             feat_names,
+#             sens_names,
+#         ) = self.load_bail("bail")
+
+#         node_num = features.shape[0]
+
+#         idx_train = torch.LongTensor(idx_train)
+#         idx_val = torch.LongTensor(idx_val)
+#         idx_test = torch.LongTensor(idx_test)
+#         labels = torch.LongTensor(labels)
+#         features = self.feature_norm(features)
+#         adj = mx_to_torch_sparse_tensor(adj, is_sparse=True)
+#         self.adj_ = adj
+#         self.features_ = features
+#         self.labels_ = labels
+#         self.idx_train_ = idx_train
+#         self.idx_val_ = idx_val
+#         self.idx_test_ = idx_test
+#         self.sens_ = sens
+#         self.sens_idx_ = sens_idx
+#         self.feat_names_ = feat_names
+#         self.sens_names_ = sens_names
+
+#     def feature_norm(self, features):
+#         min_values = features.min(axis=0)[0]
+#         max_values = features.max(axis=0)[0]
+#         return 2 * (features - min_values).div(max_values - min_values) - 1
+
+#     def load_bail(
+#         self,
+#         dataset,
+#         sens_attr="WHITE",
+#         predict_attr="RECID",
+#         path="./dataset/bail/",
+#         label_number=100,
+#     ):
+#         # print('Loading {} dataset from {}'.format(dataset, path))
+#         self.path_name = "bail"
+#         if not os.path.exists(os.path.join(self.root, self.path_name)):
+#             os.makedirs(os.path.join(self.root, self.path_name))
+
+#         if not os.path.exists(os.path.join(self.root, self.path_name, "bail.csv")):
+#             # print('not exist')
+#             url = "https://raw.githubusercontent.com/PyGDebias-Team/data/main/2023-7-26/bail/bail.csv"
+#             file_name = "bail.csv"
+#             self.download(url, file_name)
+#         # print('exist')
+#         if not os.path.exists(
+#             os.path.join(self.root, self.path_name, "bail_edges.txt")
+#         ):
+#             url = "https://raw.githubusercontent.com/PyGDebias-Team/data/main/2023-7-26/bail/bail_edges.txt"
+#             file_name = "bail_edges.txt"
+#             self.download(url, file_name)
+
+#         idx_features_labels = pd.read_csv(
+#             os.path.join(self.root, self.path_name, "{}.csv".format(dataset))
+#         )
+#         header = list(idx_features_labels.columns)
+#         header.remove(predict_attr)
+
+#         # build relationship
+
+#         edges_unordered = np.genfromtxt(
+#             os.path.join(self.root, self.path_name, f"{dataset}_edges.txt")
+#         ).astype("int")
+
+#         features = sp.csr_matrix(idx_features_labels[header], dtype=np.float32)
+#         labels = idx_features_labels[predict_attr].values
+
+#         idx = np.arange(features.shape[0])
+#         idx_map = {j: i for i, j in enumerate(idx)}
+#         edges = np.array(
+#             list(map(idx_map.get, edges_unordered.flatten())), dtype=int
+#         ).reshape(edges_unordered.shape)
+
+#         adj = sp.coo_matrix(
+#             (np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])),
+#             shape=(labels.shape[0], labels.shape[0]),
+#             dtype=np.float32,
+#         )
+
+#         # build symmetric adjacency matrix
+#         adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
+
+#         # features = normalize(features)
+#         adj = adj + sp.eye(adj.shape[0])
+
+#         features = torch.FloatTensor(np.array(features.todense()))
+#         labels = torch.LongTensor(labels)
+
+#         import random
+
+#         random.seed(20)
+#         label_idx_0 = np.where(labels == 0)[0]
+#         label_idx_1 = np.where(labels == 1)[0]
+#         random.shuffle(label_idx_0)
+#         random.shuffle(label_idx_1)
+#         idx_train = np.append(
+#             label_idx_0[: min(int(0.5 * len(label_idx_0)), label_number // 2)],
+#             label_idx_1[: min(int(0.5 * len(label_idx_1)), label_number // 2)],
+#         )
+#         idx_val = np.append(
+#             label_idx_0[int(0.5 * len(label_idx_0)) : int(0.75 * len(label_idx_0))],
+#             label_idx_1[int(0.5 * len(label_idx_1)) : int(0.75 * len(label_idx_1))],
+#         )
+#         idx_test = np.append(
+#             label_idx_0[int(0.75 * len(label_idx_0)) :],
+#             label_idx_1[int(0.75 * len(label_idx_1)) :],
+#         )
+
+#         sens = idx_features_labels[sens_attr].values.astype(int)
+#         sens = torch.FloatTensor(sens)
+#         idx_train = torch.LongTensor(idx_train)
+#         idx_val = torch.LongTensor(idx_val)
+#         idx_test = torch.LongTensor(idx_test)
+#         feat_names = header
+#         sens_names = [sens_attr]
+
+#         return adj, features, labels, edges, sens, idx_train, idx_val, idx_test, 0, feat_names, sens_names
 class Bail(Dataset):
     def __init__(self):
         super(Bail, self).__init__()
@@ -1801,7 +2068,7 @@ class Bail(Dataset):
     def load_bail(
         self,
         dataset,
-        sens_attr="WHITE",
+        sens_attrs=["WHITE", "MALE"],
         predict_attr="RECID",
         path="./dataset/bail/",
         label_number=100,
@@ -1829,6 +2096,9 @@ class Bail(Dataset):
         )
         header = list(idx_features_labels.columns)
         header.remove(predict_attr)
+
+        for sens_attr in sens_attrs:
+            header.remove(sens_attr)
 
         # build relationship
 
@@ -1880,17 +2150,145 @@ class Bail(Dataset):
             label_idx_1[int(0.75 * len(label_idx_1)) :],
         )
 
-        sens = idx_features_labels[sens_attr].values.astype(int)
+        # sens = idx_features_labels[sens_attr].values.astype(int)
+        sens = []
+        for sens_attr in sens_attrs:
+            sens.append(idx_features_labels[sens_attr].values)
+        sens = np.stack(sens, axis=1).T
         sens = torch.FloatTensor(sens)
         idx_train = torch.LongTensor(idx_train)
         idx_val = torch.LongTensor(idx_val)
         idx_test = torch.LongTensor(idx_test)
         feat_names = header
-        sens_names = [sens_attr]
+        sens_names = sens_attrs
 
         return adj, features, labels, edges, sens, idx_train, idx_val, idx_test, 0, feat_names, sens_names
 
 
+# class Credit(Dataset):
+#     def __init__(self):
+#         super(Credit, self).__init__()
+#         (
+#             adj,
+#             features,
+#             labels,
+#             edges,
+#             sens,
+#             idx_train,
+#             idx_val,
+#             idx_test,
+#             sens_idx,
+#         ) = self.load_credit("credit")
+
+#         node_num = features.shape[0]
+
+#         idx_train = torch.LongTensor(idx_train)
+#         idx_val = torch.LongTensor(idx_val)
+#         idx_test = torch.LongTensor(idx_test)
+#         labels = torch.LongTensor(labels)
+#         features = self.feature_norm(features)
+#         adj = mx_to_torch_sparse_tensor(adj, is_sparse=True)
+#         self.adj_ = adj
+#         self.features_ = features
+#         self.labels_ = labels
+#         self.idx_train_ = idx_train
+#         self.idx_val_ = idx_val
+#         self.idx_test_ = idx_test
+#         self.sens_ = sens
+#         self.sens_idx_ = sens_idx
+
+#     def feature_norm(self, features):
+#         min_values = features.min(axis=0)[0]
+#         max_values = features.max(axis=0)[0]
+#         return 2 * (features - min_values).div(max_values - min_values) - 1
+
+#     def load_credit(
+#         self,
+#         dataset,
+#         sens_attr="Age",
+#         predict_attr="NoDefaultNextMonth",
+#         path="./dataset/credit/",
+#         label_number=6000,
+#     ):
+#         from scipy.spatial import distance_matrix
+
+#         # print('Loading {} dataset from {}'.format(dataset, path))
+#         self.path_name = "credit"
+#         if not os.path.exists(os.path.join(self.root, self.path_name)):
+#             os.makedirs(os.path.join(self.root, self.path_name))
+
+#         if not os.path.exists(os.path.join(self.root, self.path_name, "credit.csv")):
+#             url = "https://raw.githubusercontent.com/PyGDebias-Team/data/main/2023-7-26/credit/credit.csv"
+#             file_name = "credit.csv"
+#             self.download(url, file_name)
+#         if not os.path.exists(
+#             os.path.join(self.root, self.path_name, "credit_edges.txt")
+#         ):
+#             url = "https://raw.githubusercontent.com/PyGDebias-Team/data/main/2023-7-26/credit/credit_edges.txt"
+#             file_name = "credit_edges.txt"
+#             self.download(url, file_name)
+
+#         idx_features_labels = pd.read_csv(
+#             os.path.join(self.root, self.path_name, "{}.csv".format(dataset))
+#         )
+#         header = list(idx_features_labels.columns)
+#         header.remove(predict_attr)
+#         header.remove("Single")
+
+#         # build relationship
+#         edges_unordered = np.genfromtxt(
+#             os.path.join(self.root, self.path_name, f"{dataset}_edges.txt")
+#         ).astype("int")
+
+#         features = sp.csr_matrix(idx_features_labels[header], dtype=np.float32)
+#         labels = idx_features_labels[predict_attr].values
+#         idx = np.arange(features.shape[0])
+#         idx_map = {j: i for i, j in enumerate(idx)}
+#         edges = np.array(
+#             list(map(idx_map.get, edges_unordered.flatten())), dtype=int
+#         ).reshape(edges_unordered.shape)
+
+#         adj = sp.coo_matrix(
+#             (np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])),
+#             shape=(labels.shape[0], labels.shape[0]),
+#             dtype=np.float32,
+#         )
+
+#         # build symmetric adjacency matrix
+#         adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
+#         adj = adj + sp.eye(adj.shape[0])
+
+#         features = torch.FloatTensor(np.array(features.todense()))
+#         labels = torch.LongTensor(labels)
+
+#         import random
+
+#         random.seed(20)
+#         label_idx_0 = np.where(labels == 0)[0]
+#         label_idx_1 = np.where(labels == 1)[0]
+#         random.shuffle(label_idx_0)
+#         random.shuffle(label_idx_1)
+
+#         idx_train = np.append(
+#             label_idx_0[: min(int(0.5 * len(label_idx_0)), label_number // 2)],
+#             label_idx_1[: min(int(0.5 * len(label_idx_1)), label_number // 2)],
+#         )
+#         idx_val = np.append(
+#             label_idx_0[int(0.5 * len(label_idx_0)) : int(0.75 * len(label_idx_0))],
+#             label_idx_1[int(0.5 * len(label_idx_1)) : int(0.75 * len(label_idx_1))],
+#         )
+#         idx_test = np.append(
+#             label_idx_0[int(0.75 * len(label_idx_0)) :],
+#             label_idx_1[int(0.75 * len(label_idx_1)) :],
+#         )
+
+#         sens = idx_features_labels[sens_attr].values.astype(int)
+#         sens = torch.FloatTensor(sens)
+#         idx_train = torch.LongTensor(idx_train)
+#         idx_val = torch.LongTensor(idx_val)
+#         idx_test = torch.LongTensor(idx_test)
+
+#         return adj, features, labels, edges, sens, idx_train, idx_val, idx_test, 1
 class Credit(Dataset):
     def __init__(self):
         super(Credit, self).__init__()
@@ -1903,7 +2301,8 @@ class Credit(Dataset):
             idx_train,
             idx_val,
             idx_test,
-            sens_idx,
+            feat_names,
+            sens_names,
         ) = self.load_credit("credit")
 
         node_num = features.shape[0]
@@ -1921,7 +2320,8 @@ class Credit(Dataset):
         self.idx_val_ = idx_val
         self.idx_test_ = idx_test
         self.sens_ = sens
-        self.sens_idx_ = sens_idx
+        self.feat_names_ = feat_names
+        self.sens_names_ = sens_names
 
     def feature_norm(self, features):
         min_values = features.min(axis=0)[0]
@@ -1959,6 +2359,7 @@ class Credit(Dataset):
         )
         header = list(idx_features_labels.columns)
         header.remove(predict_attr)
+        header.remove(sens_attr)
         header.remove("Single")
 
         # build relationship
@@ -2013,8 +2414,9 @@ class Credit(Dataset):
         idx_train = torch.LongTensor(idx_train)
         idx_val = torch.LongTensor(idx_val)
         idx_test = torch.LongTensor(idx_test)
+        sens_names = [sens_attr]
 
-        return adj, features, labels, edges, sens, idx_train, idx_val, idx_test, 1
+        return adj, features, labels, edges, sens, idx_train, idx_val, idx_test, header, sens_names
 
 
 class LCC(Dataset):

@@ -137,9 +137,17 @@ def preprocess_bail(bail):
     if isinstance(sens, torch.Tensor):
         sens = sens.cpu().numpy()
 
-    race = np.array(["White" if s == 1 else "Other" for s in sens])
-    sens = np.stack([race], axis=1).T
-    sens_names = ["Race"]
+    # race = np.array(["White" if s == 1 else "Other" for s in sens])
+    # sens = np.stack([race], axis=1).T
+    # sens_names = ["Race"]
+    sens_names = ["Race", "Gender"]
+
+    race = sens[0]
+    race = np.where(race == 1, 'White', 'Other')
+    gender = sens[1]
+    # 1 to Male, 0 to Female
+    gender = np.where(gender == 0, 'Female', 'Male')
+    sens = np.stack([race, gender], axis=1).T
 
     return g, adj, features, sens, sens_names, masks, labels, feat_names
 
@@ -224,43 +232,6 @@ def preprocess_credit(credit):
     age = np.array([">25" if s == 1 else "<=25" for s in sens])
     sens = np.stack([age], axis=1).T
     sens_names = ["Age"]
-
-    return g, adj, features, sens, sens_names, masks, labels, feat_names
-
-
-def preprocess_german(german):
-    adj, features, idx_train, idx_val, idx_test, labels, sens, feat_names, sens_names \
-        = german.adj(), german.features(), german.idx_train(), german.idx_val(), \
-        german.idx_test(), german.labels(), german.sens(), german.feat_names(), german.sens_names()
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    src, dst = adj.coalesce().indices()
-
-    # Create the heterograph
-    g = dgl.heterograph({('node', 'edge', 'node'): (src.cpu().numpy(), dst.cpu().numpy())})
-    g = g.int().to(device)
-
-    # convert idx_train, idx_val, idx_test to boolean masks
-    train_mask = torch.zeros(adj.shape[0], dtype=torch.bool)
-    val_mask = torch.zeros(adj.shape[0], dtype=torch.bool)
-    test_mask = torch.zeros(adj.shape[0], dtype=torch.bool)
-    train_mask[idx_train] = True
-    val_mask[idx_val] = True
-    test_mask[idx_test] = True
-    masks = train_mask, val_mask, test_mask
-
-    # normalize features
-    features = feature_norm(features)
-
-    features = features.to(device)
-    labels = labels.to(device)
-    # if sens is a tensor, convert to numpy array
-    if isinstance(sens, torch.Tensor):
-        sens = sens.cpu().numpy()
-
-    gender = np.array(["Male" if s == 0 else "Female" for s in sens])
-    sens = np.stack([gender], axis=1).T
-    sens_names = ["Gender"]
 
     return g, adj, features, sens, sens_names, masks, labels, feat_names
 

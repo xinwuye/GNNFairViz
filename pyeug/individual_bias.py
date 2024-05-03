@@ -32,7 +32,8 @@ def group_bias_contribution(adj, features, model, group, selected_nodes):
         ori_dist = avg_dist(group, pred_ori)
 
         # Remove indices corresponding to the ith row and column
-        selected_nodes_tensor = torch.tensor(selected_nodes, dtype=torch.long).to(device)
+        # selected_nodes_tensor = torch.tensor(selected_nodes, dtype=torch.long).to(device)
+        selected_nodes_tensor = torch.from_numpy(selected_nodes.astype(int)).to(device)
         mask_row = ~torch.isin(indices[0], selected_nodes_tensor)
         mask_col = ~torch.isin(indices[1], selected_nodes_tensor) 
         mask = mask_row & mask_col
@@ -50,7 +51,7 @@ def group_bias_contribution(adj, features, model, group, selected_nodes):
 
         # Remove the ith row and column from the feature matrix
         mask = torch.ones(size[0], dtype=bool)
-        mask[selected_nodes] = False
+        mask[selected_nodes.astype(int)] = False
         new_features = features[mask]
 
         # Get the prediction for the new graph
@@ -81,7 +82,7 @@ def calc_attr_contributions(model, g, feat, selected_nodes, groups, attr_indices
     feat_clone = feat.clone().detach()
     # feat_clone[..., selected_nodes, :][..., attr_indices] = feat_mean[attr_indices] 
     # Indices for rows and columns where the values need to be set to 1
-    row_indices = torch.tensor(selected_nodes)  # Rows 1 and 3
+    row_indices = torch.tensor(selected_nodes.astype(int))  # Rows 1 and 3
     col_indices = torch.tensor(attr_indices)  # Columns 0 and 2
 
     # Convert row and column indices to a meshgrid of indices
@@ -111,7 +112,7 @@ def calc_emb_contribution(model, g, feat, selected_nodes, groups):
         # index out the selected nodes
         # Create a mask where True indicates the rows we want to keep
         mask = torch.ones(embeddings_clone.shape[0], dtype=torch.bool)  # Initially, select all rows
-        mask[selected_nodes] = False  # Set rows to remove to False
+        mask[selected_nodes.astype(int)] = False  # Set rows to remove to False
         # Use the mask to select rows
         new_dist = avg_dist(groups[mask], embeddings_clone[mask])
 
@@ -136,7 +137,7 @@ def calc_structure_contribution(adj, model, g, feat, selected_nodes, groups):
     adj_clone = adj.clone().detach()
 
     # Converting the rows_to_zero into a tensor
-    selected_nodes_tensor = torch.from_numpy(selected_nodes).to(device)
+    selected_nodes_tensor = torch.from_numpy(selected_nodes.astype(int)).to(device)
 
     # Get the row indices and column indices separately from the adj tensor
     indices = adj_clone.coalesce().indices()
@@ -209,35 +210,55 @@ def gaussian_kde_pytorch(data, bw_method='scott'):
     scale = bandwidth * torch.eye(d, device=data.device)
     kernel = dist.MultivariateNormal(torch.zeros(d, device=data.device), scale_tril=scale)
 
+    batch_size = 10**8 // n  # Maximum number of points that can be processed at once
+
+    # def evaluate(points):
+    #     # Shape of points: [D, P] where D is dimensions and P is number of points
+    #     # We need to compute the density at each point in `points` for each sample in `data`
+    #     # Expand data to [P, N, D]
+    #     # Expand points to [P, 1, D]
+    #     points = points.t().unsqueeze(1)  # Shape: [P, 1, D]
+    #     data0 = data.unsqueeze(0)  # Shape: [1, N, D]
+    #     diffs = points - data0  # Broadcasting to get differences [P, N, D]
+    #     # log_probs = kernel.log_prob(diffs)  # Sum over dimensions automatically, Shape: [P, N]
+    #     log_probs = mvnlogprob(kernel, diffs)
+    #     weights = torch.logsumexp(log_probs, dim=1) - torch.log(torch.tensor(n, dtype=torch.float32, device=data.device))
+    #     return torch.exp(weights)  # Convert log probabilities back to probabilities
+
     def evaluate(points):
-        # Shape of points: [D, P] where D is dimensions and P is number of points
-        # We need to compute the density at each point in `points` for each sample in `data`
-        # Expand data to [P, N, D]
-        # Expand points to [P, 1, D]
-        points = points.t().unsqueeze(1)  # Shape: [P, 1, D]
+        # Ensure points are in the correct shape [D, P]
+        points = points.t()  # Transpose points if necessary
         data0 = data.unsqueeze(0)  # Shape: [1, N, D]
-        diffs = points - data0  # Broadcasting to get differences [P, N, D]
-        # log_probs = kernel.log_prob(diffs)  # Sum over dimensions automatically, Shape: [P, N]
-        log_probs = mvnlogprob(kernel, diffs)
-        weights = torch.logsumexp(log_probs, dim=1) - torch.log(torch.tensor(n, dtype=torch.float32, device=data.device))
-        return torch.exp(weights)  # Convert log probabilities back to probabilities
+        total_points = points.shape[0]
+        densities = torch.zeros(total_points, device=data.device)
+
+        # Process points in batches
+        for i in range(0, total_points, batch_size):
+            batch_points = points[i:i + batch_size].unsqueeze(1)  # Reshape for broadcasting
+            diffs = batch_points - data0  # Compute differences for this batch
+            log_probs = mvnlogprob(kernel, diffs)
+            weights = torch.logsumexp(log_probs, dim=1) - torch.log(torch.tensor(n, dtype=torch.float32, device=data.device))
+            densities[i:i + batch_size] = torch.exp(weights)  # Store results in the densities tensor
+
+        return densities
 
     return evaluate
 
 
 def jsdist(set1, set2):
-    # if set1.shape[0] > 10000, downsample to 10000
-    if set1.shape[0] > 10000:
-        set1 = set1[np.random.choice(set1.shape[0], 10000, replace=False)]
-    if set2.shape[0] > 10000:
-        set2 = set2[np.random.choice(set2.shape[0], 10000, replace=False)]
+    # # if set1.shape[0] > 10000, downsample to 10000
+    # if set1.shape[0] > 10000:
+    #     set1 = set1[np.random.choice(set1.shape[0], 10000, replace=False)]
+    # if set2.shape[0] > 10000:
+    #     set2 = set2[np.random.choice(set2.shape[0], 10000, replace=False)]
+    # print('set1:', set1[:10])
+    # print('set2:', set2[:10])
     kde1 = gaussian_kde_pytorch(set1)
     kde2 = gaussian_kde_pytorch(set2)
 
     combined_set = torch.cat([set1, set2], dim=0).t()
     pdf1 = kde1(combined_set)
     pdf2 = kde2(combined_set)
-
     pos_indices = (pdf1 > 0) & (pdf2 > 0)
     pdf1 = pdf1[pos_indices]
     pdf2 = pdf2[pos_indices]
