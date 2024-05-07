@@ -644,7 +644,7 @@ class EUG:
         # self.bias_contributions_emb = 1
 
         # self.bias_contributions_nodes_latex = pn.pane.LaTeX('Nodes: 1')
-        self.bias_contributions_attrs_summative_latex = pn.pane.LaTeX(f'Attr.(Summativ): {contribution_attrs_summative:.3f}')
+        self.bias_contributions_attrs_summative_latex = pn.pane.LaTeX(f'Attr.(Summative): {contribution_attrs_summative:.3f}')
         self.bias_contributions_attrs_synergistic_latex = pn.pane.LaTeX(f'Attr.(Synergistic): {contribution_attrs:.3f}')
         self.bias_contributions_structure_latex = pn.pane.LaTeX(f'Struc.: {contribution_structure:.3f}')
         self.bias_contributions_attrs_structure_latex = pn.pane.LaTeX(f'Attr. & Struc.: {contribution_attrs_structure:.3f}')
@@ -831,7 +831,7 @@ class EUG:
         else:
             self.sampled_alpha = np.ones(self.n_nodes)
         
-        selected_nodes = self.pre_selected_nodes_stream.selected_nodes
+        selected_nodes = self.pre_selected_nodes_stream.selected_nodes.astype(int)
         if len(selected_nodes) > 0:
             # create a np array containing 1 and 0.2 representing the alpha value of the nodes selected and not selected
             selected_alpha = np.zeros(self.n_nodes)
@@ -1149,7 +1149,7 @@ class EUG:
         # self.bias_contributions_attrs_structure = contribution_attrs_structure
         # self.bias_contributions_emb = contribution_emb
         # self.bias_contributions_nodes_latex.object = f'Nodes: {contribution_nodes:.3f}'
-        self.bias_contributions_attrs_summative_latex.object = f'Attr.(Summativ): {contribution_attrs_summative:.3f}'
+        self.bias_contributions_attrs_summative_latex.object = f'Attr.(Summative): {contribution_attrs_summative:.3f}'
         self.bias_contributions_attrs_synergistic_latex.object = f'Attr.(Synergistic): {contribution_attrs:.3f}'
         self.bias_contributions_structure_latex.object = f'Structure: {contribution_structure:.3f}'
         self.bias_contributions_attrs_structure_latex.object = f'Attr. & Struc.: {contribution_attrs_structure:.3f}'
@@ -1262,7 +1262,7 @@ class EUG:
         # self.bias_contributions_attrs_structure = contribution_attrs_structure
         # self.bias_contributions_emb = contribution_emb
         # self.bias_contributions_nodes_latex.object = f'Nodes: {contribution_nodes:.3f}'
-        self.bias_contributions_attrs_summative_latex.object = f'Attr.(Summativ): {contribution_attrs_summative:.3f}'
+        self.bias_contributions_attrs_summative_latex.object = f'Attr.(Summative): {contribution_attrs_summative:.3f}'
         self.bias_contributions_attrs_synergistic_latex.object = f'Attr.(Synergistic): {contribution_attrs:.3f}'
         self.bias_contributions_structure_latex.object = f'Structure: {contribution_structure:.3f}'
         self.bias_contributions_attrs_structure_latex.object = f'Attr. & Struc.: {contribution_attrs_structure:.3f}'
@@ -1539,3 +1539,7 @@ class EUG:
                 selected_nodes = np.where((log_degrees >= min_degree) & (log_degrees < max_degree))[0]
             pre_selected_nodes = self.pre_selected_nodes_stream.selected_nodes
             self.pre_selected_nodes_stream.event(selected_nodes=np.union1d(pre_selected_nodes, selected_nodes))
+
+
+    def get_fairness_metrics(self):
+        return self.fairness_metric_view_value_bar.data[()]['Value']
