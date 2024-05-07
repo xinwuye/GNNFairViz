@@ -15,8 +15,18 @@ scrollbar_css = """
 
 multichoice_css = """
 .choices__item.choices__item--selectable[aria-selected='true'] {
-    background-color: #BDC5CB !important;
+    background-color: #6E808C !important;
     color: white !important; /* Change text color to white for better readability */
+}
+"""
+
+switch_css = """
+/* Inside component's internal style */
+.body .bar {
+    background-color: #CCCCCC !important;
+}
+.body .knob {
+    background-color: #999999 !important;
 }
 """
 

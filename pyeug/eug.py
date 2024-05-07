@@ -1,7 +1,7 @@
 from . import util
 from . import draw
 from . import community
-from .css import scrollbar_css, multichoice_css
+from .css import scrollbar_css, multichoice_css, switch_css
 from . import RangesetCategorical
 # from .metrics import node_classification
 # from .metrics.pdd import pdd
@@ -39,7 +39,8 @@ hv.extension('bokeh')
 pn.extension()
 
 pn.config.raw_css.append(scrollbar_css)
-pn.config.raw_css.append(multichoice_css )
+pn.config.raw_css.append(multichoice_css)
+pn.config.raw_css.append(switch_css)
 
 PERPLEXITY = 15 # german
 SEED = 42
@@ -128,6 +129,10 @@ class ContributionsSelectedNodes(Stream):
 
 class SelectedAttrsLs(Stream):
     selected_attrs_ls = param.List(default=[[]], constant=False, doc='Selected attributes list.')
+
+
+class GroupConnectionMatrices(Stream):
+    group_connection_matrices = param.List(default=[], constant=False, doc='Group connection matrices.')
 
 
 class EUG:
@@ -442,6 +447,7 @@ class EUG:
         self.contributions_stream = Contributions(contributions=contributions)
 
         self.groups_stream.add_subscriber(self._update_correlations_groups_callback)
+        self.groups_stream.add_subscriber(self._groups_stream_subscriber)
 
         self.selected_attrs_ls_stream = SelectedAttrsLs(selected_attrs_ls=[[]])
         self.selected_attrs_ls_stream.add_subscriber(self._selected_attrs_ls_stream_callback)
@@ -490,15 +496,64 @@ class EUG:
         # convert computational_graph_degrees to a np array
         self.computational_graph_degrees = torch.stack(computational_graph_degrees).cpu().numpy()  
 
-        self.dependency_view_degree_sens = hv.DynamicMap(pn.bind(draw.draw_dependency_view_degree_sens,
-                                                                 computational_graph_degrees=self.computational_graph_degrees,
+        # self.dependency_view_degree_sens = hv.DynamicMap(pn.bind(draw.draw_dependency_view_degree_sens,
+        #                                                          computational_graph_degrees=self.computational_graph_degrees,
+        #                                                          hop=self.correlation_view_selection,
+        #                                                          scale=self.n_neighbors_scale_group,),
+        #                                                          streams=[self.selected_nodes_stream,
+        #                                                                   self.groups_stream,]).opts(
+        #                                                                       height=int(self.diagnostic_panel_height*0.45),
+        #                                                                       width=int(self.diagnostic_panel_width*0.3),
+        #                                                                   )
+
+        groups = self.groups_stream.groups
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        adj = self.adj0
+        # Group rows and sum them
+        unique_groups = np.unique(groups)
+        n_unique_groups = unique_groups.size
+
+        group_connection_matrices = []
+        max_hop = self.max_hop
+        group_col_indices = []
+        for k in range(max_hop):
+            if k == 0:
+                group_sums = torch.zeros((n_unique_groups, adj.shape[1])).to(device)
+                # Iterate over each group, summing the corresponding rows
+                for i, group in enumerate(unique_groups):
+                    group_mask = torch.tensor(groups == group)  # Boolean array where True indicates the index belongs to group i
+                    group_indices = torch.nonzero(group_mask).squeeze(-1).to(torch.long).to(device)  # Get the indices of the group
+                    group_adj = torch.index_select(adj, 0, group_indices)
+                    group_sums[i] = group_adj.sum(dim=0).to_dense()
+            else:
+                group_sums = torch.sparse.mm(group_sums, adj)
+
+            group_connection_matrix = []
+            # Iterate over each group to perform the extraction and summation of corresponding columns
+            for i, group in enumerate(unique_groups):
+                if k == 0:
+                    group_mask = torch.tensor(groups == group)  # Boolean array where True indicates the index belongs to group i
+                    group_indices = torch.nonzero(group_mask).squeeze(-1).to(torch.long).to(device)  # Get the indices of the group
+                    group_col_indices.append(group_indices)
+                else: 
+                    group_indices = group_col_indices[i]
+                group_group_sums = torch.index_select(group_sums, 1, group_indices)
+                sum_group_group_sums = group_group_sums.sum(dim=1).to_dense()
+                # convert sum_group_group_sums to a list
+                sum_group_group_sums = sum_group_group_sums.tolist()
+                for j, val in enumerate(sum_group_group_sums):
+                    group_connection_matrix.append((unique_groups[i], unique_groups[j], val))
+            group_connection_matrices.append(group_connection_matrix)
+
+        self.group_connection_matrices_stream = GroupConnectionMatrices(group_connection_matrices=group_connection_matrices)
+
+        self.dependency_view_structure_sens = hv.DynamicMap(pn.bind(draw.draw_dependency_view_structure_sens,
                                                                  hop=self.correlation_view_selection,
                                                                  scale=self.n_neighbors_scale_group,),
-                                                                 streams=[self.selected_nodes_stream,
-                                                                          self.groups_stream,]).opts(
-                                                                              height=int(self.diagnostic_panel_height*0.45),
-                                                                              width=int(self.diagnostic_panel_width*0.3),
-                                                                          )
+                                                                 streams=[self.group_connection_matrices_stream]).opts(
+                                                                     height=int(self.diagnostic_panel_height*0.45),
+                                                                     width=int(self.diagnostic_panel_width*0.3),
+                                                                    )
 
 ### density view
         # Slider for min_threshold
@@ -571,16 +626,29 @@ class EUG:
             selected_nodes=self.selected_nodes_stream.selected_nodes,
             groups=self.groups_stream.groups,
         )
+        contribution_attrs_structure = individual_bias.calc_attr_structure_contribution(
+            adj=self.adj,
+            model=self.model,
+            g=self.g, 
+            feat=self.feat,
+            selected_nodes=self.selected_nodes_stream.selected_nodes,
+            groups=self.groups_stream.groups,
+            attr_indices=list(range(self.n_feat))
+        )
+        contribution_attrs_summative = self.contributions_stream.contributions.sum()
 
-        self.bias_contributions_nodes = 1
-        self.bias_contributions_attrs = contribution_attrs
-        self.bias_contributions_structure = contribution_structure
-        self.bias_contributions_emb = 1
+        # self.bias_contributions_nodes = 1
+        # self.bias_contributions_attrs = contribution_attrs
+        # self.bias_contributions_structure = contribution_structure
+        # self.bias_contributions_attrs_structure = contribution_attrs_structure
+        # self.bias_contributions_emb = 1
 
-        self.bias_contributions_nodes_latex = pn.pane.LaTeX('Nodes: 1')
-        self.bias_contributions_attrs_latex = pn.pane.LaTeX(f'Attributes: {contribution_attrs:.4f}')
-        self.bias_contributions_structure_latex = pn.pane.LaTeX(f'Structure: {contribution_structure:.4f}')
-        self.bias_contributions_emb_latex = pn.pane.LaTeX(f'Embeddings: 1')
+        # self.bias_contributions_nodes_latex = pn.pane.LaTeX('Nodes: 1')
+        self.bias_contributions_attrs_summative_latex = pn.pane.LaTeX(f'Attr.(Summativ): {contribution_attrs_summative:.3f}')
+        self.bias_contributions_attrs_synergistic_latex = pn.pane.LaTeX(f'Attr.(Synergistic): {contribution_attrs:.3f}')
+        self.bias_contributions_structure_latex = pn.pane.LaTeX(f'Struc.: {contribution_structure:.3f}')
+        self.bias_contributions_attrs_structure_latex = pn.pane.LaTeX(f'Attr. & Struc.: {contribution_attrs_structure:.3f}')
+        # self.bias_contributions_emb_latex = pn.pane.LaTeX(f'Embeddings: 1')
 
         self.attribute_view_overview.opts(
             height=int(self.diagnostic_panel_height*0.5),
@@ -593,15 +661,18 @@ class EUG:
                     self.attr_selection_mode_button,
                     self.new_selection_button,
                     '#### Bias Contributions',
-                    self.bias_contributions_nodes_latex,
+                    # self.bias_contributions_nodes_latex,
+                    self.bias_contributions_attrs_summative_latex,
+                    self.bias_contributions_attrs_synergistic_latex,
                     self.bias_contributions_structure_latex,
-                    self.bias_contributions_attrs_latex,
-                    self.bias_contributions_emb_latex,
+                    self.bias_contributions_attrs_structure_latex,
+                    # self.bias_contributions_emb_latex,
                 ),
                 self.attribute_view_overview,
             ),
             pn.Row(
-                pn.Column(self.dependency_view_degree_sens),
+                # pn.Column(self.dependency_view_degree_sens),
+                pn.Column(self.dependency_view_structure_sens),
                 pn.Column(self.dependency_view_attr_sens),
                 pn.Column(self.dependency_view_attr_degree),
             ),
@@ -670,9 +741,32 @@ class EUG:
         )
 
 # control panel
+        record_nodes_selector_options = list(np.unique(self.groups_stream.groups))
+        self.record_nodes_selector = pn.widgets.MultiChoice(name='Nodes', 
+                                                     options=record_nodes_selector_options, 
+                                                     value=record_nodes_selector_options, 
+                                                     width=int(self.control_panel_width*0.63))  
+         
+        record_attribute_selection_options = ['All', 'None']
+        selected_attrs_ls = self.selected_attrs_ls_stream.selected_attrs_ls
+        if [] in selected_attrs_ls:
+            record_attribute_selection_options += list(range(1, len(selected_attrs_ls)))
+        else:
+            record_attribute_selection_options += list(range(1, len(selected_attrs_ls)+1))
+        self.record_attribute_selection = pn.widgets.Select(options=record_attribute_selection_options, 
+                                                            name='Attributes', 
+                                                            value='All', 
+                                                            width=200)
+        
+        self.record_edge_switch = pn.widgets.Switch(name='Edges', value=True)
+
         self.control_panel = pn.Card(
             pn.Column(
                 '### Global Settings', 
+                '#### Record',
+                self.record_nodes_selector,
+                self.record_attribute_selection,
+                pn.Row(pn.pane.Str('Edges: False'), self.record_edge_switch, pn.pane.Str('True')),
                 self.record_button,
                 '#### Sensitive Attribute Selection',
                 pn.Row(
@@ -849,7 +943,7 @@ class EUG:
                 
                 # calculate the deleting area
                 selected_attrs_ls = self.selected_attrs_ls_stream.selected_attrs_ls.copy()
-                circle_gap = 2
+                circle_gap = 1
                 r_sector1 = 0.45
                 n_selected_attrs = len(selected_attrs_ls)
                 n_all_nodes = self.n_nodes
@@ -859,6 +953,10 @@ class EUG:
                 ymin = 0 
                 xmax = n_all_nodes * 1.1 
                 xmin = (circle_gap * xmax * (n_selected_attrs + 1)) / (circle_gap * n_selected_attrs + circle_gap - hw_ratio * ymax + hw_ratio * ymin)
+                if abs(xmin) > xmax:
+                    # solve: -xmax = -circle_gap * (1 + n_selected_attrs) * (2 * xmax / (ymax - ymin)) / hw_ratio
+                    circle_gap = (hw_ratio * (ymax - ymin)) / (2 * (1 + n_selected_attrs))
+                    xmin = -xmax
                 x_y_ratio = (xmax - xmin) / (ymax - ymin) / hw_ratio 
                 y_pos = n + 0.5 
                 for i, selected_attrs in enumerate(selected_attrs_ls): 
@@ -1019,24 +1117,6 @@ class EUG:
         self.contributions_stream.event(contributions=contributions,
                                         contributions_selected_attrs=np.array(contributions_selected_attrs))
 
-        # # update self.contributions_selected_nodes_stream
-        # gc = individual_bias.group_bias_contribution(
-        #     self.adj,
-        #     self.feat,
-        #     self.model,
-        #     self.groups_stream.groups,
-        #     self.selected_nodes_stream.selected_nodes
-        # )
-        # self.contributions_selected_nodes_stream.event(contributions_selected_nodes=gc)
-
-        # update self.bias_contributions_attrs_latex
-        contribution_nodes = individual_bias.group_bias_contribution(
-            adj=self.adj,
-            model=self.model,
-            features=self.feat,
-            group=self.groups_stream.groups,
-            selected_nodes=self.selected_nodes_stream.selected_nodes
-        )
         contribution_attrs = individual_bias.calc_attr_contributions(
             model=self.model,
             g=self.g, 
@@ -1053,26 +1133,191 @@ class EUG:
             selected_nodes=self.selected_nodes_stream.selected_nodes,
             groups=self.groups_stream.groups,
         )
-        contribution_emb = individual_bias.calc_emb_contribution(
+        contribution_attrs_structure = individual_bias.calc_attr_structure_contribution(
+            adj=self.adj,
+            model=self.model,
+            g=self.g, 
+            feat=self.feat,
+            selected_nodes=self.selected_nodes_stream.selected_nodes,
+            groups=self.groups_stream.groups,
+            attr_indices=list(range(self.n_feat))
+        )
+        contribution_attrs_summative = self.contributions_stream.contributions.sum()
+        # self.bias_contributions_nodes = contribution_nodes
+        # self.bias_contributions_attrs = contribution_attrs
+        # self.bias_contributions_structure = contribution_structure
+        # self.bias_contributions_attrs_structure = contribution_attrs_structure
+        # self.bias_contributions_emb = contribution_emb
+        # self.bias_contributions_nodes_latex.object = f'Nodes: {contribution_nodes:.3f}'
+        self.bias_contributions_attrs_summative_latex.object = f'Attr.(Summativ): {contribution_attrs_summative:.3f}'
+        self.bias_contributions_attrs_synergistic_latex.object = f'Attr.(Synergistic): {contribution_attrs:.3f}'
+        self.bias_contributions_structure_latex.object = f'Structure: {contribution_structure:.3f}'
+        self.bias_contributions_attrs_structure_latex.object = f'Attr. & Struc.: {contribution_attrs_structure:.3f}'
+        # self.bias_contributions_emb_latex.object = f'Embeddings: {contribution_emb:.3f}'
+
+        # update self.group_connection_matrices_stream
+        groups = self.groups_stream.groups
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        adj = self.adj0
+        # Group rows and sum them
+        unique_groups = np.unique(groups)
+        n_unique_groups = unique_groups.size
+        groups_selected = groups[selected_nodes.astype(int)]
+        # Convert selected_nodes to tensor for advanced indexing
+        selected_nodes_tensor = torch.tensor(selected_nodes, dtype=torch.long, device=device)
+        # Filter rows from adj
+        filtered_adj = torch.index_select(adj, 0, selected_nodes_tensor)
+
+        group_connection_matrices = []
+        max_hop = self.max_hop
+        group_col_indices = []
+        for k in range(max_hop):
+            # row operation
+            if k == 0:
+                group_sums = torch.zeros((n_unique_groups, adj.shape[1])).to(device)
+                # Iterate over each group, summing the corresponding rows
+                for i, group in enumerate(unique_groups):
+                    group_mask = torch.tensor(groups_selected == group)  # Boolean array where True indicates the index belongs to group i
+                    group_indices = torch.nonzero(group_mask).squeeze(-1).to(torch.long).to(device)  # Get the indices of the group
+                    group_adj = torch.index_select(filtered_adj, 0, group_indices)
+                    group_sums[i] = group_adj.sum(dim=0).to_dense()
+            else:
+                group_sums = torch.sparse.mm(group_sums, adj)
+            # col operation
+            group_connection_matrix = []
+            # Iterate over each group to perform the extraction and summation of corresponding columns
+            for i, group in enumerate(unique_groups):
+                if k == 0:
+                    group_mask = torch.tensor(groups == group)  # Boolean array where True indicates the index belongs to group i
+                    group_indices = torch.nonzero(group_mask).squeeze(-1).to(torch.long).to(device)  # Get the indices of the group
+                    group_col_indices.append(group_indices)
+                else: 
+                    group_indices = group_col_indices[i]
+                group_group_sums = torch.index_select(group_sums, 1, group_indices)
+                sum_group_group_sums = group_group_sums.sum(dim=1).to_dense()
+                # convert sum_group_group_sums to a list
+                sum_group_group_sums = sum_group_group_sums.tolist()
+                for j, val in enumerate(sum_group_group_sums):
+                    group_connection_matrix.append((unique_groups[i], unique_groups[j], val))
+            group_connection_matrices.append(group_connection_matrix)
+
+        self.group_connection_matrices_stream.event(group_connection_matrices=group_connection_matrices)
+
+    def _groups_stream_subscriber(self, groups):
+        # update contributions
+        contributions = util.calc_contributions(
+            model=self.model,
+            g=self.g,
+            feat=self.feat,
+            selected_nodes=self.selected_nodes_stream.selected_nodes,
+            groups=self.groups_stream.groups)
+        
+        selected_attrs_ls = self.selected_attrs_ls_stream.selected_attrs_ls
+        contributions_selected_attrs = []
+        for selected_attrs in selected_attrs_ls:
+            if selected_attrs:
+                contribution_selected_attrs = individual_bias.calc_attr_contributions(
+                    model=self.model,
+                    g=self.g, 
+                    feat=self.feat,
+                    selected_nodes=self.selected_nodes_stream.selected_nodes,
+                    groups=self.groups_stream.groups,
+                    attr_indices=selected_attrs
+                )
+                contributions_selected_attrs.append(contribution_selected_attrs)
+            else:
+                contributions_selected_attrs.append(0.)
+        self.contributions_stream.event(contributions=contributions,
+                                        contributions_selected_attrs=np.array(contributions_selected_attrs))
+
+        contribution_attrs = individual_bias.calc_attr_contributions(
+            model=self.model,
+            g=self.g, 
+            feat=self.feat,
+            selected_nodes=self.selected_nodes_stream.selected_nodes,
+            groups=self.groups_stream.groups,
+            attr_indices=list(range(self.n_feat))
+        )
+        contribution_structure = individual_bias.calc_structure_contribution(
+            adj=self.adj,
             model=self.model,
             g=self.g, 
             feat=self.feat,
             selected_nodes=self.selected_nodes_stream.selected_nodes,
             groups=self.groups_stream.groups,
         )
-        self.bias_contributions_nodes = contribution_nodes
-        self.bias_contributions_attrs = contribution_attrs
-        self.bias_contributions_structure = contribution_structure
-        self.bias_contributions_emb = contribution_emb
-        self.bias_contributions_nodes_latex.object = f'Nodes: {contribution_nodes:.4f}'
-        self.bias_contributions_attrs_latex.object = f'Attributes: {contribution_attrs:.4f}'
-        self.bias_contributions_structure_latex.object = f'Structure: {contribution_structure:.4f}'
-        self.bias_contributions_emb_latex.object = f'Embeddings: {contribution_emb:.4f}'
+        contribution_attrs_structure = individual_bias.calc_attr_structure_contribution(
+            adj=self.adj,
+            model=self.model,
+            g=self.g, 
+            feat=self.feat,
+            selected_nodes=self.selected_nodes_stream.selected_nodes,
+            groups=self.groups_stream.groups,
+            attr_indices=list(range(self.n_feat))
+        )
+        contribution_attrs_summative = self.contributions_stream.contributions.sum()
+        # self.bias_contributions_nodes = contribution_nodes
+        # self.bias_contributions_attrs = contribution_attrs
+        # self.bias_contributions_structure = contribution_structure
+        # self.bias_contributions_attrs_structure = contribution_attrs_structure
+        # self.bias_contributions_emb = contribution_emb
+        # self.bias_contributions_nodes_latex.object = f'Nodes: {contribution_nodes:.3f}'
+        self.bias_contributions_attrs_summative_latex.object = f'Attr.(Summativ): {contribution_attrs_summative:.3f}'
+        self.bias_contributions_attrs_synergistic_latex.object = f'Attr.(Synergistic): {contribution_attrs:.3f}'
+        self.bias_contributions_structure_latex.object = f'Structure: {contribution_structure:.3f}'
+        self.bias_contributions_attrs_structure_latex.object = f'Attr. & Struc.: {contribution_attrs_structure:.3f}'
+        # self.bias_contributions_emb_latex.object = f'Embeddings: {contribution_emb:.3f}'
 
-    # def _contributions_selected_nodes_stream_subscriber(self, contributions_selected_nodes):
-    #     # update correlation_view_md
-    #     # self.correlation_view_latex2.object = f'{(contributions_selected_nodes * 100):.2f}%'
-    #     self.bias_contributions_nodes_latex.object = f'Nodes: {contributions_selected_nodes:.4f}'
+        self.record_nodes_selector.options = list(np.unique(groups))
+        self.record_nodes_selector.value = self.record_nodes_selector.options
+
+        # update self.group_connection_matrices_stream
+        selected_nodes = self.selected_nodes_stream.selected_nodes
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        adj = self.adj0
+        # Group rows and sum them
+        unique_groups = np.unique(groups)
+        n_unique_groups = unique_groups.size
+        groups_selected = groups[selected_nodes.astype(int)]
+        # Convert selected_nodes to tensor for advanced indexing
+        selected_nodes_tensor = torch.tensor(selected_nodes, dtype=torch.long, device=device)
+        # Filter rows from adj
+        filtered_adj = torch.index_select(adj, 0, selected_nodes_tensor)
+
+        group_connection_matrices = []
+        max_hop = self.max_hop
+        group_col_indices = []
+        for k in range(max_hop):
+            # row operation
+            if k == 0:
+                group_sums = torch.zeros((n_unique_groups, adj.shape[1])).to(device)
+                # Iterate over each group, summing the corresponding rows
+                for i, group in enumerate(unique_groups):
+                    group_mask = torch.tensor(groups_selected == group)  # Boolean array where True indicates the index belongs to group i
+                    group_indices = torch.nonzero(group_mask).squeeze(-1).to(torch.long).to(device)  # Get the indices of the group
+                    group_adj = torch.index_select(filtered_adj, 0, group_indices)
+                    group_sums[i] = group_adj.sum(dim=0).to_dense()
+            else:
+                group_sums = torch.sparse.mm(group_sums, adj)
+            # col operation
+            group_connection_matrix = []
+            # Iterate over each group to perform the extraction and summation of corresponding columns
+            for i, group in enumerate(unique_groups):
+                if k == 0:
+                    group_mask = torch.tensor(groups == group)  # Boolean array where True indicates the index belongs to group i
+                    group_indices = torch.nonzero(group_mask).squeeze(-1).to(torch.long).to(device)  # Get the indices of the group
+                    group_col_indices.append(group_indices)
+                else: 
+                    group_indices = group_col_indices[i]
+                group_group_sums = torch.index_select(group_sums, 1, group_indices)
+                sum_group_group_sums = group_group_sums.sum(dim=1).to_dense()
+                # convert sum_group_group_sums to a list
+                sum_group_group_sums = sum_group_group_sums.tolist()
+                for j, val in enumerate(sum_group_group_sums):
+                    group_connection_matrix.append((unique_groups[i], unique_groups[j], val))
+            group_connection_matrices.append(group_connection_matrix)
+
+        self.group_connection_matrices_stream.event(group_connection_matrices=group_connection_matrices)        
 
     def _update_correlations_groups_callback(self, groups): 
         # update contributions
@@ -1158,6 +1403,15 @@ class EUG:
 
         self.contributions_stream.event(contributions_selected_attrs=contributions_selected_attrs) 
 
+        record_attribute_selection_options = ['All', 'None']
+        selected_attrs_ls = self.selected_attrs_ls_stream.selected_attrs_ls
+        if [] in selected_attrs_ls:
+            record_attribute_selection_options += list(range(1, len(selected_attrs_ls)))
+        else:
+            record_attribute_selection_options += list(range(1, len(selected_attrs_ls)+1))
+        self.record_attribute_selection.options = record_attribute_selection_options
+        self.record_attribute_selection.value = 'All'
+
     def _save_extract_communities_args(self):
         # Determine the directory of the current file
         current_dir = os.path.dirname(__file__)
@@ -1191,16 +1445,33 @@ class EUG:
         self.contributions_stream.event(contributions_selected_attrs=contributions_selected_attrs_tmp)
 
     def _record_button_callback(self, event):
-        selected_nodes = self.selected_nodes_stream.selected_nodes
-        selected_attrs = self.selected_attrs_ls_stream.selected_attrs_ls[-1] 
+        selected_nodes = self.selected_nodes_stream.selected_nodes.astype(int)
+        # filter the selected_nodes according to self.record_nodes_selector, use vectorized function
+        # Convert list to numpy array for efficient comparison
+        selector_values = np.array(self.record_nodes_selector.value)
+        # Create a boolean mask where True means the node's group is in selector_values
+        mask = np.isin(self.groups_stream.groups[selected_nodes], selector_values)
+        # Apply mask to selected_nodes to filter it
+        recorded_nodes = selected_nodes[mask]
+
+        if self.record_attribute_selection.value == 'All':
+            recorded_attrs = self.feat_names
+        elif self.record_attribute_selection.value == 'None':
+            recorded_attrs = []
+        else:
+            idx = self.record_attribute_selection.value - 1
+            selected_attrs = self.selected_attrs_ls_stream.selected_attrs_ls[idx]
+            recorded_attrs = [self.feat_names[i] for i in selected_attrs]
+
         self.records.append({
             'Sens': self.sens_name_selector.value,
-            'Nodes': selected_nodes, 
-            'Attributes': selected_attrs,
-            'Bias Contribution of Nodes': self.bias_contributions_nodes,
-            'Bias Contribution of Attributes': self.bias_contributions_attrs,
-            'Bias Contribution of Structure': self.bias_contributions_structure,
-            'Bias Contribution of Embeddings': self.bias_contributions_emb,
+            'Nodes': recorded_nodes, 
+            'Edges': self.record_edge_switch.value,
+            'Attributes': recorded_attrs,
+            # 'Bias Contribution of Nodes': self.bias_contributions_nodes,
+            # 'Bias Contribution of Attributes': self.bias_contributions_attrs,
+            # 'Bias Contribution of Structure': self.bias_contributions_structure,
+            # 'Bias Contribution of Embeddings': self.bias_contributions_emb,
         })   
 
     def _graph_view_scatter_selection1d_subscriber(self, index):

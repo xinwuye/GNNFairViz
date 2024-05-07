@@ -554,6 +554,10 @@ def draw_attribute_view_overview_all(feat, groups, columns_categorical, hw_ratio
     xmax = n_all_nodes * 1.1 
     # solve: xmin = -circle_gap * (1 + n_selected_attrs) * ((xmax - xmin) / (ymax - ymin)) / hw_ratio
     xmin = (circle_gap * xmax * (n_selected_attrs + 1)) / (circle_gap * n_selected_attrs + circle_gap - hw_ratio * ymax + hw_ratio * ymin)
+    if abs(xmin) > xmax:
+        # solve: -xmax = -circle_gap * (1 + n_selected_attrs) * (2 * xmax / (ymax - ymin)) / hw_ratio
+        circle_gap = (hw_ratio * (ymax - ymin)) / (2 * (1 + n_selected_attrs))
+        xmin = -xmax
 
     # feat is a df, get the column names as feat_names
     feat_names = feat.columns
@@ -621,10 +625,14 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
     ymax = n+1.5
     ymin = 0
     xmax = n_all_nodes * 1.1 
-    print(xmax)
+    # print(xmax)
     # solve: xmin = -circle_gap * (1 + n_selected_attrs) * ((xmax - xmin) / (ymax - ymin)) / hw_ratio
     xmin = (circle_gap * xmax * (n_selected_attrs + 1)) / (circle_gap * n_selected_attrs + circle_gap - hw_ratio * ymax + hw_ratio * ymin)
-    print(xmin)
+    if abs(xmin) > xmax:
+        # solve: -xmax = -circle_gap * (1 + n_selected_attrs) * (2 * xmax / (ymax - ymin)) / hw_ratio
+        circle_gap = (hw_ratio * (ymax - ymin)) / (2 * (1 + n_selected_attrs))
+        xmin = -xmax
+    # print(xmin)
     # Prepare the data for Rectangles
     rect_data = []
     x0 = 0
@@ -660,7 +668,8 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
                         ))  # Column tick labels
     
     # glyph plot
-    r_sector1 = 0.45
+    # r_sector1 = 0.45
+    r_sector1 = circle_gap * 0.45
     r_ellipse1 = r_sector1 * 1.5
     r_ellipse2 = r_sector1
     r_sector2 = r_sector1 / 2 
@@ -698,7 +707,7 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
                                         x_y_ratio = x_y_ratio,
                                         start_angle=90,
                                         end_angle=90-end_angle,)
-        sector_data1 = {('x', 'y'): sector_points1, 'color': FILL_GREY_COLOR}
+        sector_data1 = {('x', 'y'): sector_points1, 'color': LINE_GREY_COLOR}
         ellipse_data.append(sector_data1)
 
         # ellipse1: overall bias indicators
@@ -736,11 +745,11 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
                                             x_y_ratio = x_y_ratio,
                                             start_angle=90,
                                             end_angle=90-end_angle,)
-            sector_data1 = {('x', 'y'): selected_attr_sector, 'color': FILL_GREY_COLOR}
+            sector_data1 = {('x', 'y'): selected_attr_sector, 'color': LINE_GREY_COLOR}
             ellipse_data.append(sector_data1)
             # inner circle
             e = hv.Ellipse(x_pos, y_pos, (x_y_ratio * r_selected_attr_circle, r_selected_attr_circle))
-            e_data = {('x', 'y'): e.array(), 'color': 'black'} 
+            e_data = {('x', 'y'): e.array(), 'color': FILL_GREY_COLOR} 
             ellipse_data.append(e_data)
             # transparent circle for hovering
             trans_circle = hv.Ellipse(x_pos, y_pos, (x_y_ratio * r_trans_circle, r_trans_circle))
@@ -831,7 +840,7 @@ def draw_attribute_view_overview_selected(feat, groups, columns_categorical, sel
             final_plot_with_arrow = final_combined_plot
     else:
         final_plot_with_arrow = final_combined_plot
-    print('draw_attribute_view_overview_selected is done')
+    # print('draw_attribute_view_overview_selected is done')
     # Return the final plot with the arrow
     return final_plot_with_arrow.opts(
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
@@ -885,45 +894,69 @@ def draw_dependency_view_attr_degree_violin(feat, computational_graph_degrees, s
     return violin
 
 
-def draw_dependency_view_degree_sens(groups, computational_graph_degrees, selected_nodes, hop, scale):
-    # Prepare the data
-    all_data = computational_graph_degrees[hop]  # Use all data from the specified 'hop' index
+# def draw_dependency_view_degree_sens(groups, computational_graph_degrees, selected_nodes, hop, scale):
+#     # Prepare the data
+#     all_data = computational_graph_degrees[hop]  # Use all data from the specified 'hop' index
+#     if scale == 'Log':
+#         all_data = np.log(all_data + 1)
+    
+#     # Create a DataFrame for all nodes
+#     df_all = pd.DataFrame({
+#         'Sensitive Group': groups,
+#         '# of Neighbors': all_data,
+#         'selected': 'Overall'  # This column specifies that the data represents overall distribution
+#     })
+    
+#     # Copy selected nodes for a separate 'Selected' entry
+#     df_selected = df_all.iloc[selected_nodes.astype(int)].copy()
+#     df_selected['selected'] = 'Selected'
+    
+#     # Concatenate the original and selected data
+#     df_combined = pd.concat([df_all, df_selected], ignore_index=True)
+    
+#     # Convert 'feat' to string for categorical x-axis
+#     df_combined['Sensitive Group'] = df_combined['Sensitive Group'].astype(str)
+    
+#     # Create the violin plot with the split condition
+#     violin = hv.Violin(df_combined, ['selected', 'Sensitive Group'], '# of Neighbors')
+#     violin = violin.opts(opts.Violin(split=hv.dim('selected'))).opts(
+#         ylabel='# of Neighbors' if scale == 'Original' else 'Log(# of Neighbors)',
+#         show_legend=True, 
+#         legend_position='top',
+#         cmap=[BAR_COLOR1, BAR_COLOR0],
+#         violin_line_color=None,
+#         framewise=True,
+#         invert_axes=True,
+#         shared_axes=False,
+#         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)] 
+#     )
+
+#     return violin
+
+
+def draw_dependency_view_structure_sens(group_connection_matrices, hop, scale):
+    group_connection_matrix = group_connection_matrices[hop]
     if scale == 'Log':
-        all_data = np.log(all_data + 1)
-    
-    # Create a DataFrame for all nodes
-    df_all = pd.DataFrame({
-        'Sensitive Group': groups,
-        '# of Neighbors': all_data,
-        'selected': 'Overall'  # This column specifies that the data represents overall distribution
-    })
-    
-    # Copy selected nodes for a separate 'Selected' entry
-    df_selected = df_all.iloc[selected_nodes.astype(int)].copy()
-    df_selected['selected'] = 'Selected'
-    
-    # Concatenate the original and selected data
-    df_combined = pd.concat([df_all, df_selected], ignore_index=True)
-    
-    # Convert 'feat' to string for categorical x-axis
-    df_combined['Sensitive Group'] = df_combined['Sensitive Group'].astype(str)
-    
-    # Create the violin plot with the split condition
-    violin = hv.Violin(df_combined, ['selected', 'Sensitive Group'], '# of Neighbors')
-    violin = violin.opts(opts.Violin(split=hv.dim('selected'))).opts(
-        ylabel='# of Neighbors' if scale == 'Original' else 'Log(# of Neighbors)',
-        show_legend=True, 
-        legend_position='top',
-        cmap=[BAR_COLOR1, BAR_COLOR0],
-        violin_line_color=None,
-        framewise=True,
-        invert_axes=True,
-        shared_axes=False,
-        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)] 
+        # for each (x, y, val) in group_connection_matrix, val = log(val + 1), here group_connection_matrix is a list of tuples
+        group_connection_matrix = [(x, y, np.log(val + 1)) for x, y, val in group_connection_matrix]
+    custom_hover = HoverTool(
+        tooltips=[
+            ('# of Edges', '@{z}')  # The '@{z}' refers to the z-values in the data
+        ]
     )
-
-    return violin
-
+    # Create a HeatMap plot
+    heatmap = hv.HeatMap(group_connection_matrix).opts(
+        tools=[custom_hover],  
+        colorbar=True, 
+        # cmap='Viridis', 
+        cmap=CONTINUOUS_CMAP,
+        xlabel='All Nodes', 
+        ylabel='Selected Nodes', 
+        # rotate the x-axis labels by 90 degrees
+        xrotation=90,
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)]
+    )
+    return heatmap
 
 def draw_dependency_view_attr_sens_violin(feat, groups, selected_nodes):
     # Prepare the data
