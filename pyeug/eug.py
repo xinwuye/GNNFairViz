@@ -1,7 +1,7 @@
 from . import util
 from . import draw
 from . import community
-from .css import scrollbar_css, multichoice_css, switch_css
+from .css import scrollbar_css, multichoice_css, switch_css, card_css, tabs_css
 from . import RangesetCategorical
 # from .metrics import node_classification
 # from .metrics.pdd import pdd
@@ -41,9 +41,13 @@ pn.extension()
 pn.config.raw_css.append(scrollbar_css)
 pn.config.raw_css.append(multichoice_css)
 pn.config.raw_css.append(switch_css)
+pn.config.raw_css.append(card_css)
+pn.config.raw_css.append(tabs_css)
 
 PERPLEXITY = 15 # german
 SEED = 42
+
+FILL_GREY_COLOR = '#CCCCCC'  
 
 # set np seed
 np.random.seed(SEED)
@@ -248,6 +252,7 @@ class EUG:
         self.height = height
         self.width = width
         padding = 15
+        self.line_space = 10
         # self.control_panel_height = int(height/3-35-30)
         self.control_panel_height = int(height/3-35)-padding
         self.control_panel_width = int(width/4-20)
@@ -382,21 +387,24 @@ class EUG:
                      ])
         
         self.graph_view_overlay = (self.graph_view_square * self.graph_view_scatter * self.graph_view_polys).opts(
-            width=int(self.node_selection_view_width*0.26),
-            height=int(self.node_selection_view_height*0.95),
+            width=int(self.node_selection_view_width*0.24) - self.line_space,
+            height=int(self.node_selection_view_height*0.72),
             shared_axes=False,
         ) 
         
         self.graph_view_legend = hv.DynamicMap(pn.bind(draw.draw_embedding_view_legend,
                                                        colors=self.colors,),
             streams=[self.groups_stream]).opts(
-                width=int(self.graph_view_width*0.17),
-                height=int(self.graph_view_height*0.95),
+                width=int(self.graph_view_width*0.2),
+                height=int(self.graph_view_height*0.72),
             )
 
 ### fairness metric view
         self.fairness_metric_view_chart = pn.pane.HoloViews()
-        self.fairness_metric_view_chart_column = pn.Column(self.fairness_metric_view_chart)
+        self.fairness_metric_view_chart_column = pn.Column(
+            '#### Detail of Selected Metric',
+            self.fairness_metric_view_chart
+        )
 
         self.fairness_metric_view_chart_eod_radio = pn.widgets.RadioButtonGroup(
             options=['TPR', 'FPR'], value='TPR', button_type='default', width=200)
@@ -410,13 +418,17 @@ class EUG:
         self.fairness_metric_view_range_bar = draw.draw_fairness_metric_view_range_bar()
         self.fairness_metric_view_bar = (self.fairness_metric_view_value_bar * self.fairness_metric_view_range_bar).opts(
             width=int(self.fairness_metric_view_width*0.93),
-            height=int(self.fairness_metric_view_height*0.4),
+            height=int(self.fairness_metric_view_height*0.35),
         )
         self.fairness_metric_view_value_bar_selection1d = hv.streams.Selection1D(source=self.fairness_metric_view_value_bar)
         self.fairness_metric_view_value_bar_selection1d.add_subscriber(self._update_fairness_metric_detail)
 
         self.fairness_metric_view = pn.Card(
-            pn.Column(self.fairness_metric_view_bar), 
+            pn.Column(
+                '#### Fairness Metrics',
+                self.fairness_metric_view_bar
+            ), 
+            pn.pane.HTML(f"<div style='height: 1px; background-color: {FILL_GREY_COLOR}; width: {int(self.fairness_metric_view_width)-20}px;'></div>"),
             self.fairness_metric_view_chart_column,
             hide_header=True,
             name='Fairness Metric View',
@@ -482,12 +494,6 @@ class EUG:
 
         computational_graph_degrees = []
         for i in range(self.max_hop):
-            # print('i:', i)
-            # if i == 0:
-            #     adj_mul = self.adj0
-            # else:
-            #     adj_mul = torch.sparse.mm(adj_mul, self.adj0)
-            # d = adj_mul.sum(axis=1).to_dense()
             if i == 0:
                 d = self.adj0.sum(axis=1).unsqueeze(1)
             else:
@@ -502,7 +508,7 @@ class EUG:
         #                                                          scale=self.n_neighbors_scale_group,),
         #                                                          streams=[self.selected_nodes_stream,
         #                                                                   self.groups_stream,]).opts(
-        #                                                                       height=int(self.diagnostic_panel_height*0.45),
+        #                                                                       height=int(self.diagnostic_panel_height*0.42),
         #                                                                       width=int(self.diagnostic_panel_width*0.3),
         #                                                                   )
 
@@ -551,8 +557,8 @@ class EUG:
                                                                  hop=self.correlation_view_selection,
                                                                  scale=self.n_neighbors_scale_group,),
                                                                  streams=[self.group_connection_matrices_stream]).opts(
-                                                                     height=int(self.diagnostic_panel_height*0.45),
-                                                                     width=int(self.diagnostic_panel_width*0.3),
+                                                                     height=int(self.diagnostic_panel_height*0.35) - self.line_space,
+                                                                     width=int(self.diagnostic_panel_width*0.32),
                                                                     )
 
 ### density view
@@ -580,8 +586,8 @@ class EUG:
         # self.density_view_scatter = draw.draw_density_view_scatter(graph_metrics) \
         self.density_view_scatter = hv.DynamicMap(draw.draw_density_view_scatter,
                                                   streams=[self.data_density_view]).opts(
-                  width=int(self.node_selection_view_width*0.3), 
-                  height=int(self.node_selection_view_height*0.93)-60,
+                  width=int(self.node_selection_view_width*0.3) - self.line_space, 
+                  height=int(self.node_selection_view_height*0.75)-60,
                   shared_axes=False,
                   )
         
@@ -590,7 +596,7 @@ class EUG:
         self.density_view_scatter_selection1d.add_subscriber(self._update_selected_communities_dropdown)
 
         self.selected_communities_dropdown = pn.widgets.Select(name='Tapped Communities', options=[None],
-                                                               width=int(self.correlation_view_width*0.93))
+                                                               width=int(self.correlation_view_width*0.93) - self.line_space)
         # watch it
         self.selected_communities_dropdown.param.watch(self._selected_communities_dropdown_callback, 'value')
 
@@ -651,15 +657,15 @@ class EUG:
         # self.bias_contributions_emb_latex = pn.pane.LaTeX(f'Embeddings: 1')
 
         self.attribute_view_overview.opts(
-            height=int(self.diagnostic_panel_height*0.5),
-            width=int(self.diagnostic_panel_width*0.83),
+            height=int(self.diagnostic_panel_height*0.41),
+            width=int(self.diagnostic_panel_width*0.83) - 3*self.line_space,
         )
         self.diagnostic_panel = pn.Card(
             pn.Row(
                 pn.Column(
-                    '#### Attribute Selection',
-                    self.attr_selection_mode_button,
-                    self.new_selection_button,
+                    # '#### Attribute Selection',
+                    # self.attr_selection_mode_button,
+                    # self.new_selection_button,
                     '#### Bias Contributions',
                     # self.bias_contributions_nodes_latex,
                     self.bias_contributions_attrs_summative_latex,
@@ -668,13 +674,34 @@ class EUG:
                     self.bias_contributions_attrs_structure_latex,
                     # self.bias_contributions_emb_latex,
                 ),
-                self.attribute_view_overview,
+                pn.pane.HTML(f"<div style='width: 1px; background-color: {FILL_GREY_COLOR}; height: {int(self.diagnostic_panel_height*0.5)}px;'></div>"),
+                pn.Column(
+                    pn.Row(
+                        '#### Attr. Overview',
+                        self.attr_selection_mode_button,
+                        self.new_selection_button,
+                    ),
+                    self.attribute_view_overview,
+                ),
             ),
+            pn.pane.HTML(f"<div style='width: {int(self.diagnostic_panel_width)-20}px; background-color: {FILL_GREY_COLOR}; height: 1px;'></div>"),
             pn.Row(
-                # pn.Column(self.dependency_view_degree_sens),
-                pn.Column(self.dependency_view_structure_sens),
-                pn.Column(self.dependency_view_attr_sens),
-                pn.Column(self.dependency_view_attr_degree),
+                pn.Column(
+                    '#### Connectivity between Sensitive Groups',
+                    self.dependency_view_structure_sens
+                ),
+                pn.pane.HTML(f"<div style='width: 1px; background-color: {FILL_GREY_COLOR}; height: {int(self.diagnostic_panel_height*0.42)}px;'></div>"),
+                pn.Column(
+                    '#### Attr. Distribution in each Sensitive Group',
+                    self.dependency_view_attr_sens,
+                    width=int(self.diagnostic_panel_width*0.3),
+                ),
+                pn.pane.HTML(f"<div style='width: 1px; background-color: {FILL_GREY_COLOR}; height: {int(self.diagnostic_panel_height*0.42)}px;'></div>"),
+                pn.Column(
+                    '#### Relationship between Attr. & # of Neighbors',
+                    self.dependency_view_attr_degree,
+                    width=int(self.diagnostic_panel_width*0.3) - self.line_space,
+                ),
             ),
             hide_header=True,
             name='Diagnostic View',
@@ -714,8 +741,8 @@ class EUG:
                                                                             scale=self.n_neighbors_scale_group),
                                                                      streams=[self.pre_selected_nodes_stream])
         self.structural_bias_overview_hist = (self.structural_bias_overview_hist_selected * self.structural_bias_overview_hist_all).opts(
-            width=int(self.node_selection_view_width*0.3),
-            height=int(self.node_selection_view_height*0.95),  
+            width=int(self.node_selection_view_width*0.3) - self.line_space,
+            height=int(self.node_selection_view_height*0.73),  
         )
 
         self.structural_bias_overview_hist_all_selection1d = hv.streams.Selection1D(source=self.structural_bias_overview_hist_all)
@@ -723,13 +750,21 @@ class EUG:
 
         self.node_selectin_view = pn.Card(
             pn.Row(
-                self.graph_view_legend,   
-                self.graph_view_overlay,
                 pn.Column(
-                    # self.correlation_view_selection,
+                    '#### Node Embeddings',
+                    pn.Row(
+                        self.graph_view_legend,   
+                        self.graph_view_overlay,
+                    )
+                ),
+                pn.pane.HTML(f"<div style='width: 1px; background-color: {FILL_GREY_COLOR}; height: {self.node_selection_view_height-20}px;'></div>"),
+                pn.Column(
+                    '#### # of Neighbors in Computational Graph',
                     self.structural_bias_overview_hist,
                 ),
+                pn.pane.HTML(f"<div style='width: 1px; background-color: {FILL_GREY_COLOR}; height: {self.node_selection_view_height-20}px;'></div>"),
                 pn.Column(
+                    '#### Dense Subgraphs',
                     self.selected_communities_dropdown,
                     self.density_view_scatter,
                 ),
@@ -883,8 +918,8 @@ class EUG:
                                                                                         streams=[self.groups_stream,
                                                                                                 self.selected_nodes_stream])
                             self.dependency_view_attr_sens.object = (dependency_view_attr_sens_bar_selected * dependency_view_attr_sens_bar_all).opts(
-                                height=int(self.diagnostic_panel_height*0.45),
-                                width=int(self.diagnostic_panel_width*0.3),
+                                height=int(self.diagnostic_panel_height*0.34),
+                                width=int(self.diagnostic_panel_width*0.3) - self.line_space,
                                 ) 
                             
                             self.dependency_view_attr_degree.object = hv.DynamicMap(pn.bind(draw.draw_dependency_view_attr_degree_violin,
@@ -895,16 +930,16 @@ class EUG:
                                                                                     streams=[self.selected_nodes_stream,
                                                                                     ]
                                                                                     ).opts(
-                                                                                        height=int(self.diagnostic_panel_height*0.45),
-                                                                                        width=int(self.diagnostic_panel_width*0.3),
+                                                                                        height=int(self.diagnostic_panel_height*0.34),
+                                                                                        width=int(self.diagnostic_panel_width*0.3) - self.line_space,
                                                                                     )
                         else:
                             self.dependency_view_attr_sens.object = hv.DynamicMap(pn.bind(draw.draw_dependency_view_attr_sens_violin,
                                                                                    feat=feat),
                                                                            streams=[self.selected_nodes_stream,
                                                                                     self.groups_stream]).opts(
-                                                                                        height=int(self.diagnostic_panel_height*0.45),
-                                                                                        width=int(self.diagnostic_panel_width*0.3),
+                                                                                        height=int(self.diagnostic_panel_height*0.34),
+                                                                                        width=int(self.diagnostic_panel_width*0.3) - self.line_space,
                                                                                     )
                             
                             dependency_view_attr_degree_hex_all = hv.DynamicMap(pn.bind(draw.draw_dependency_view_attr_degree_hex_all,
@@ -921,8 +956,8 @@ class EUG:
                                                                                      streams=[self.data_embedding_view_alpha,
                                                                                               self.selected_nodes_stream,]) 
                             self.dependency_view_attr_degree.object = (dependency_view_attr_degree_hex_all * dependency_view_attr_degree_scatter_selected).opts(
-                                height=int(self.diagnostic_panel_height*0.45),
-                                width=int(self.diagnostic_panel_width*0.3),
+                                height=int(self.diagnostic_panel_height*0.34),
+                                width=int(self.diagnostic_panel_width*0.3) - self.line_space,
                                 shared_axes=False
                             )
                 else:
@@ -1038,13 +1073,13 @@ class EUG:
                                 streams=[self.selected_nodes_stream, self.groups_stream]) 
 
             if metric_name == 2 or metric_name == 6:
-                if len(self.fairness_metric_view_chart_column) == 1:
-                    self.fairness_metric_view_chart_column.insert(0, self.fairness_metric_view_chart_eod_radio)
-                    chart.opts(width=int(self.fairness_metric_view_width*0.93), height=int(self.fairness_metric_view_height*0.45)) 
+                if len(self.fairness_metric_view_chart_column) == 2:
+                    self.fairness_metric_view_chart_column.insert(1, self.fairness_metric_view_chart_eod_radio)
+                    chart.opts(width=int(self.fairness_metric_view_width*0.93), height=int(self.fairness_metric_view_height*0.33)) 
             else:  
-                if len(self.fairness_metric_view_chart_column) == 2: 
-                    self.fairness_metric_view_chart_column.pop(0)   
-                chart.opts(width=int(self.fairness_metric_view_width*0.93), height=int(self.fairness_metric_view_height*0.55)) 
+                if len(self.fairness_metric_view_chart_column) == 3: 
+                    self.fairness_metric_view_chart_column.pop(1)   
+                chart.opts(width=int(self.fairness_metric_view_width*0.93), height=int(self.fairness_metric_view_height*0.39)) 
 
             self.fairness_metric_view_chart.object = chart
         else:

@@ -57,12 +57,14 @@ def build_optimizer_train(args, params, weight_decay=0.0):
 
 def neighborhoods(adj, n_hops, use_cuda):
     """Returns the n_hops degree adjacency matrix adj."""
-    adj = torch.tensor(adj, dtype=torch.float)
+    # adj = torch.tensor(adj, dtype=torch.float)
     if use_cuda:
         adj = adj.cuda()
     hop_adj = power_adj = adj
     for i in range(n_hops - 1):
         # power_adj = power_adj @ adj
+        print(power_adj)
+        print(adj)
         power_adj = torch.sparse.mm(power_adj, adj)
         hop_adj = hop_adj + power_adj
 

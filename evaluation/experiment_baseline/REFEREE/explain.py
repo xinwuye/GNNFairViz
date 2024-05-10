@@ -142,7 +142,7 @@ class REFEREE:
         self.node_idx=[]
 
         self.n_hops = args.num_gc_layers
-        self.neighborhoods = util.neighborhoods(adj=self.adj, n_hops=self.n_hops, use_cuda=use_cuda)
+        # self.neighborhoods = util.neighborhoods(adj=self.adj, n_hops=self.n_hops, use_cuda=use_cuda)
         self.args = args
         self.print_training = args.debug_mode
 
@@ -315,9 +315,9 @@ class REFEREE:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         indices_all = torch.tensor(neighbors, device=device)[indices]
         
-        feat_mask = explainer_unfair.feat_mask.detach()
+        feat_mask = torch.sigmoid(explainer_unfair.feat_mask.detach())
         
-        return values, indices_all, feat_mask
+        return values, indices_all, feat_mask, torch.tensor(neighbors, device=device)
 
     def explain_nodes_gnn_stats(self, node_indices):
         results = []
@@ -330,18 +330,34 @@ class REFEREE:
         return results
         
 
-    def extract_neighborhood(self, node_idx, max_size=None):
-        # neighbors_adj_row = self.neighborhoods[0][node_idx, :]
-        neighbors_adj_row = self.neighborhoods[None, ...][0][node_idx, :]
-        node_idx_new = sum(neighbors_adj_row[:node_idx])
-        neighbors = np.nonzero(neighbors_adj_row)[0]
+    # def extract_neighborhood(self, node_idx, max_size=None):
+    #     # neighbors_adj_row = self.neighborhoods[0][node_idx, :]
+    #     neighbors_adj_row = self.neighborhoods[None, ...][0][node_idx, :]
+    #     node_idx_new = sum(neighbors_adj_row[:node_idx])
+    #     neighbors = np.nonzero(neighbors_adj_row)[0]
 
-        if max_size!=None:
-            neighbors=neighbors.tolist()
-            neighbors.remove(node_idx)
-            neighbors=neighbors[:max_size]
-            neighbors.append(node_idx)
-            node_idx_new=len(neighbors)-1
+    #     if max_size!=None:
+    #         neighbors=neighbors.tolist()
+    #         neighbors.remove(node_idx)
+    #         neighbors=neighbors[:max_size]
+    #         neighbors.append(node_idx)
+    #         node_idx_new=len(neighbors)-1
+
+    #     # sub_adj = self.adj[0][neighbors][:, neighbors]
+    #     # sub_adj = self.adj[None, ...][0][neighbors][:, neighbors]
+    #     neighbors_tensor = torch.tensor(neighbors, dtype=torch.long)
+    #     sub_adj = torch.index_select(self.adj, 0, neighbors_tensor)
+    #     sub_adj = torch.index_select(sub_adj, 1, neighbors_tensor)
+    #     sub_feat = self.feat[neighbors]
+    #     sub_label = self.label[neighbors]
+    #     return node_idx_new, sub_adj, sub_feat, sub_label, neighbors
+    def extract_neighborhood(self, node_idx, max_size=None):
+        neighbors_adj_row = self.adj[node_idx].to_dense().unsqueeze(0)
+        for i in range(self.n_hops - 1):
+            neighbors_adj_row += torch.sparse.mm(neighbors_adj_row, self.adj)
+        # print((neighbors_adj_row != 0)[node_idx])
+        node_idx_new = int((neighbors_adj_row.squeeze() != 0)[:node_idx].sum().item())
+        neighbors = np.nonzero(neighbors_adj_row.squeeze()).squeeze()
 
         # sub_adj = self.adj[0][neighbors][:, neighbors]
         # sub_adj = self.adj[None, ...][0][neighbors][:, neighbors]

@@ -883,11 +883,13 @@ def draw_dependency_view_attr_degree_violin(feat, computational_graph_degrees, s
         ylabel='# of Neighbors' if scale == 'Original' else 'Log(# of Neighbors)',
         show_legend=True, 
         legend_position='top',
+        show_title=False,
         cmap=[BAR_COLOR1, BAR_COLOR0],
         violin_line_color=None,
         framewise=True,
         shared_axes=False,
         invert_axes=True,
+        margin=(-10, 0, 0, 0),
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)] 
     )
 
@@ -985,14 +987,16 @@ def draw_dependency_view_attr_sens_violin(feat, groups, selected_nodes):
     violin = violin.opts(opts.Violin(split=hv.dim('selected'))).opts(
         show_legend=True, 
         legend_position='top',
+        show_title=False,
         cmap=[BAR_COLOR1, BAR_COLOR0],
         violin_line_color=None,
         framewise=True, 
         invert_axes=True,
         shared_axes=False, 
+        margin=(-10, 0, 0, 0),
         hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)]
     )
- 
+
     return violin
 
 

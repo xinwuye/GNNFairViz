@@ -10,7 +10,8 @@ import sys
 import panel as pn
 pn.extension()
 sys.path.append('../..')
-from pyeug import eug
+# from pyeug import eug
+from pyeug.metrics import node_classification
 sys.path.remove('../..')
 
 def feature_norm(features):
@@ -369,22 +370,75 @@ def data_perturbation(feat, adj, records, feat_names):
 
     g_new = dgl.heterograph({('node', 'edge', 'node'): (row_indices.cpu().numpy(), col_indices.cpu().numpy())}) 
     g_new = g_new.int().to(device)
+    adj_new = torch.sparse_coo_tensor(indices=torch.stack([row_indices, col_indices]), values=torch.ones_like(row_indices, dtype=torch.float32), size=adj_clone.size())
 
-    return g_new, feat_clone
+    return g_new, feat_clone, adj_new
 
 
-def finish_experiment(name, records, features, adj, labels, masks, feat_names, model_new,
-                      sens, sens_names, get_embeddings):
+# def finish_experiment(name, records, features, adj, labels, masks, feat_names, model_new,
+#                       sens, sens_names, get_embeddings):
+#     with open(name+'_records.pkl', 'wb') as f:
+#         pickle.dump(records, f)
+#     # Open the file in binary read mode
+#     with open(name+'_records.pkl', 'rb') as f:
+#         records = pickle.load(f)
+#     g_new, feat_new, adj_new = data_perturbation(features, adj, records, feat_names)
+#     train(g_new, feat_new, labels, masks, model_new, save_path=name+'_retrain.pth')
+#     # load the model
+#     model_new.load_state_dict(torch.load(name+'_retrain.pth'))
+#     model_new.eval()
+#     e_new = eug.EUG(model_new, adj, features, sens, sens_names, masks, labels, get_embeddings, feat_names=feat_names)
+
+#     return e_new
+
+def finish_experiment(name, records, features, adj, labels, masks, feat_names, model, model_new,
+                      sens, g):
     with open(name+'_records.pkl', 'wb') as f:
         pickle.dump(records, f)
     # Open the file in binary read mode
     with open(name+'_records.pkl', 'rb') as f:
         records = pickle.load(f)
-    g_new, feat_new = data_perturbation(features, adj, records, feat_names)
+    g_new, feat_new, adj_new = data_perturbation(features, adj, records, feat_names)
     train(g_new, feat_new, labels, masks, model_new, save_path=name+'_retrain.pth')
     # load the model
     model_new.load_state_dict(torch.load(name+'_retrain.pth'))
     model_new.eval()
-    e_new = eug.EUG(model_new, adj, features, sens, sens_names, masks, labels, get_embeddings, feat_names=feat_names)
 
-    return e_new
+    with torch.no_grad():
+        logits = model(g, features)
+    predictions = torch.argmax(logits, dim=1).cpu().numpy()
+    labels_np = labels.cpu().numpy()
+    labeled_mask = labels_np != -1
+    labeled_predictions = predictions[labeled_mask]
+    labeled_labels = labels_np[labeled_mask]
+    labeled_sens = sens[labeled_mask]
+    metrics = [
+        node_classification.delta_std_acc(labeled_predictions, labeled_labels, labeled_sens),
+        node_classification.delta_max_acc(labeled_predictions, labeled_labels, labeled_sens),
+        node_classification.delta_std_eod(labeled_predictions, labeled_labels, labeled_sens),
+        node_classification.delta_max_eod(labeled_predictions, labeled_labels, labeled_sens),
+        node_classification.delta_std_eop(labeled_predictions, labeled_labels, labeled_sens),
+        node_classification.delta_max_eop(labeled_predictions, labeled_labels, labeled_sens),
+        node_classification.delta_std_sp(labeled_predictions, labeled_labels, labeled_sens),
+        node_classification.delta_max_sp(labeled_predictions, labeled_labels, labeled_sens),
+    ]
+
+    with torch.no_grad():
+        logits = model_new(g_new, feat_new)
+    predictions = torch.argmax(logits, dim=1).cpu().numpy()
+    labeled_predictions = predictions[labeled_mask]
+    metrics_new = [
+        node_classification.delta_std_acc(labeled_predictions, labeled_labels, labeled_sens),
+        node_classification.delta_max_acc(labeled_predictions, labeled_labels, labeled_sens),
+        node_classification.delta_std_eod(labeled_predictions, labeled_labels, labeled_sens),
+        node_classification.delta_max_eod(labeled_predictions, labeled_labels, labeled_sens),
+        node_classification.delta_std_eop(labeled_predictions, labeled_labels, labeled_sens),
+        node_classification.delta_max_eop(labeled_predictions, labeled_labels, labeled_sens),
+        node_classification.delta_std_sp(labeled_predictions, labeled_labels, labeled_sens),
+        node_classification.delta_max_sp(labeled_predictions, labeled_labels, labeled_sens),
+    ]
+    print('metrics:', metrics)
+    np.save(name+'_metrics.npy', metrics)
+    print('metrics_new:', metrics_new)
+    np.save(name+'_retrain_metrics.npy', metrics_new)
+    

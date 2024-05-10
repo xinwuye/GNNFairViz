@@ -15,8 +15,8 @@ scrollbar_css = """
 
 multichoice_css = """
 .choices__item.choices__item--selectable[aria-selected='true'] {
-    background-color: #6E808C !important;
-    color: white !important; /* Change text color to white for better readability */
+    background-color: #BDC5CB !important;
+    color: black !important; /* Change text color to white for better readability */
 }
 """
 
@@ -30,4 +30,14 @@ switch_css = """
 }
 """
 
+card_css = """
+.bk-panel-models-layout-Card {
+    border: 2px solid #CCCCCC;
+}
+"""
 
+tabs_css = """
+.bk-header {
+    width: 0px;
+}
+"""
