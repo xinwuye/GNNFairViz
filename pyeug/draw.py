@@ -1225,7 +1225,7 @@ def draw_fairness_metric_view_detail(metric_name, selected_nodes, groups, labels
                 prob = np.mean(group_predictions == label)
                 heatmap_data.append((str(int(label)), group, prob))
 
-        chart = draw_heatmap_metric_view(heatmap_data, 'Label', 'Sensitive Group', 'P(Pred.=Label)')
+        chart = draw_heatmap_metric_view(heatmap_data, 'Pred.', 'Sensitive Group', 'P(Pred.)')
     elif metric_name == 1 or metric_name == 5:
         heatmap_data = []
         

@@ -306,7 +306,7 @@ class EUG:
 
 ### graph view
         # widget for graph view
-        self.layer_selection = pn.widgets.Select(options=self.layers, name='Layer', value=self.layers[-1], width=200)
+        self.layer_selection = pn.widgets.Select(options=self.layers, name='Hop', value=self.layers[-1], width=200)
 
         self.projection_selection = pn.widgets.Select(options=['UMAP', 'PCA', 't-SNE'], name='Projection', width=200)
         # watch projection selection
@@ -349,7 +349,7 @@ class EUG:
         self.data_embedding_view_thr_range = DataEmbeddingViewThrRange()
         self.data_embedding_view_thr_range.add_subscriber(self._update_thr_range)
 
-        self.embedding_view_thr_slider = pn.widgets.FloatSlider(name='RangeSet Threshold', 
+        self.embedding_view_thr_slider = pn.widgets.FloatSlider(name='Rangeset Threshold', 
                                                                 start=self.data_embedding_view_thr_range.min_thr, 
                                                                 end=self.data_embedding_view_thr_range.max_thr,
                                                                 step=0.01, value=0.5, 
@@ -595,7 +595,7 @@ class EUG:
         # watch it
         self.density_view_scatter_selection1d.add_subscriber(self._update_selected_communities_dropdown)
 
-        self.selected_communities_dropdown = pn.widgets.Select(name='Tapped Communities', options=[None],
+        self.selected_communities_dropdown = pn.widgets.Select(name='Clicked Subgraphs', options=[None],
                                                                width=int(self.correlation_view_width*0.93) - self.line_space)
         # watch it
         self.selected_communities_dropdown.param.watch(self._selected_communities_dropdown_callback, 'value')
@@ -678,7 +678,11 @@ class EUG:
                 pn.Column(
                     pn.Row(
                         '#### Attr. Overview',
-                        self.attr_selection_mode_button,
+                        # pn.Row(pn.pane.Str('Selection Mode'), self.attr_selection_mode_button),
+                        pn.Row(
+                            pn.pane.LaTeX('Selection Mode', styles={'margin-top': '11px'}), 
+                            self.attr_selection_mode_button
+                        ),
                         self.new_selection_button,
                     ),
                     self.attribute_view_overview,
@@ -759,7 +763,7 @@ class EUG:
                 ),
                 pn.pane.HTML(f"<div style='width: 1px; background-color: {FILL_GREY_COLOR}; height: {self.node_selection_view_height-20}px;'></div>"),
                 pn.Column(
-                    '#### # of Neighbors in Computational Graph',
+                    '#### # of Neighbors in Computational Graphs',
                     self.structural_bias_overview_hist,
                 ),
                 pn.pane.HTML(f"<div style='width: 1px; background-color: {FILL_GREY_COLOR}; height: {self.node_selection_view_height-20}px;'></div>"),
@@ -798,33 +802,36 @@ class EUG:
         self.control_panel = pn.Card(
             pn.Column(
                 '### Global Settings', 
-                '#### Record',
-                self.record_nodes_selector,
-                self.record_attribute_selection,
-                pn.Row(pn.pane.Str('Edges: False'), self.record_edge_switch, pn.pane.Str('True')),
-                self.record_button,
                 '#### Sensitive Attribute Selection',
                 pn.Row(
                     self.sens_name_selector, 
                     sens_name_confirm_control_panel_button,
                 ), 
+                '### Hop Selection',
+                self.layer_selection, 
                 '#### Node Selection',
                 self.n_selected_nodes_latex,
                 pn.Row(
                     node_selection_confirm_control_panel_button,
                     node_selection_clear_control_panel_button,
                 ),
+                '#### Record',
+                self.record_nodes_selector,
+                self.record_attribute_selection,
+                pn.Row(pn.pane.Str('Edges: False'), self.record_edge_switch, pn.pane.Str('True')),
+                self.record_button,
                 '#### Scale of # of Neighbors',
                 self.n_neighbors_scale_group,
                 pn.layout.Divider(), 
                 '### Node Selection View Settings',
-                self.layer_selection, 
+                '#### Node Embeddings Settings',
                 self.projection_selection,
                 pn.Row(
                     self.node_sample_size_slider,
                     sample_button,
                 ),
                 self.embedding_view_thr_slider,
+                '#### Dense Subgraphs Settings',
                 overall_density_string,
                 pn.Row(
                     self.min_threshold_slider, 

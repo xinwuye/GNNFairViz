@@ -237,7 +237,7 @@ def preprocess_credit(credit):
     if isinstance(sens, torch.Tensor):
         sens = sens.cpu().numpy()
 
-    age = np.array([">25" if s == 1 else "<=25" for s in sens])
+    age = np.array([">25" if s == 0 else "<=25" for s in sens])
     sens = np.stack([age], axis=1).T
     sens_names = ["Age"]
 

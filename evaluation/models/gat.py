@@ -10,6 +10,48 @@ import torch.nn as nn
 import torch.nn.functional as F
 import dgl.nn as dglnn
 
+# class GAT(nn.Module):
+#     def __init__(self, in_size, hid_size, out_size, heads):
+#         super().__init__()
+#         self.gat_layers = nn.ModuleList()
+        
+#         # Initial layer
+#         self.gat_layers.append(
+#             dglnn.GATConv(
+#                 in_size,
+#                 hid_size,
+#                 heads[0],
+#                 feat_drop=0.6,
+#                 attn_drop=0.6,
+#                 activation=F.elu,
+#             )
+#         )
+        
+#         # Last layer
+#         self.gat_layers.append(
+#             dglnn.GATConv(
+#                 hid_size * heads[0],
+#                 out_size * heads[1],  # Multiplied by number of heads for output layer to allow mean aggregation
+#                 heads[1],
+#                 feat_drop=0.6,
+#                 attn_drop=0.6,
+#                 activation=None,  # No activation in last layer
+#             )
+#         )
+        
+#         # Final MLP
+#         self.mlp = nn.Linear(out_size * heads[1], out_size)
+
+#     def forward(self, g, inputs):
+#         h = inputs
+#         for i, layer in enumerate(self.gat_layers):
+#             h = layer(g, h)
+#             if i == 1:  # last layer
+#                 h = h.mean(1)
+#             else:  # other layer(s)
+#                 h = h.flatten(1)
+
+#         return self.mlp(h)  # Apply MLP to the final graph embeddings
 class GAT(nn.Module):
     def __init__(self, in_size, hid_size, out_size, heads):
         super().__init__()
@@ -44,8 +86,10 @@ class GAT(nn.Module):
 
     def forward(self, g, inputs):
         h = inputs
+        self.attn_weights = []
         for i, layer in enumerate(self.gat_layers):
-            h = layer(g, h)
+            h, attn = layer(g, h, get_attention=True)
+            self.attn_weights.append(attn)
             if i == 1:  # last layer
                 h = h.mean(1)
             else:  # other layer(s)
@@ -61,7 +105,7 @@ def get_embeddings(g, features, model):
     
     # Define a hook function that will save the output of each layer
     def hook(module, input, output):
-        layer_outputs.append(output.view(output.shape[0], -1).detach())  # Use detach() to avoid saving the computation graph
+        layer_outputs.append(output[0].view(output[0].shape[0], -1).detach())  # Use detach() to avoid saving the computation graph
 
     # Register the hook for each layer in the GCN model
     hooks = []
