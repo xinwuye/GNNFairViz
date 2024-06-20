@@ -228,6 +228,7 @@ def draw_bar_metric_view(data, metric_name):
         line_color=None, 
         tools=[custom_hover], 
         invert_axes=True,
+        shared_axes=False, 
     )
     return bar_chart
 
@@ -261,7 +262,8 @@ def draw_heatmap_metric_view(data, xlabel, ylabel, title):
         xlabel=xlabel, 
         ylabel=ylabel, 
         title=title,
-        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)]
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+        shared_axes=False, 
     )
     return heatmap
 
@@ -956,7 +958,8 @@ def draw_dependency_view_structure_sens(group_connection_matrices, hop, scale):
         ylabel='Selected Nodes', 
         # rotate the x-axis labels by 90 degrees
         xrotation=90,
-        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)]
+        hooks=[lambda plot, element: setattr(plot.state.toolbar, 'logo', None)],
+        shared_axes=False, 
     )
     return heatmap
 

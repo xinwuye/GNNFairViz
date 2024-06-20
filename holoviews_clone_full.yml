@@ -1,0 +1,4 @@
+name: holoviews_clone
+channels:
+  - defaults
+prefix: /home/newdisk/xinwu/.conda/envs/holoviews_clone
