@@ -1,6 +1,7 @@
 /data/
 dataset/*
 pyeug/extract_communities_args.pkl
+evaluation/cases/presentation_interview/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
