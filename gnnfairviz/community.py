@@ -1,13 +1,5 @@
-import numpy as np
-import networkx as nx
-from scipy.spatial import distance
 import torch
-import scipy.sparse as sp
 from tqdm import tqdm
-import math
-import cProfile
-import pstats
-import sys
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -66,14 +58,11 @@ def process_graph(adj):
     nnz = adj._nnz() 
     print('nnz', nnz)
 
-    # top_values, top_indices = find_top_k_sparse(M, nnz)
     top_indices = find_top_k_sparse(M, nnz).T 
 
     nodes =dict() 
     root_nodes = set()
 
-    # profiler = cProfile.Profile()
-    # profiler.enable()  # Start profiling
     # for i, value in enumerate(top_values):
     for vertices in tqdm(top_indices):
         # vertices = top_indices[:, i]
@@ -92,10 +81,6 @@ def process_graph(adj):
         if ri != rj:
             temp_root = SetUnion(ri,rj, adj)
             root_nodes.add(temp_root)
-    # profiler.disable()  # Stop profiling
-    # stats = pstats.Stats(profiler)
-    # stats.strip_dirs().sort_stats('time').print_stats()
-    # stats.print_callers()  # Optionally, to see who is calling what
 
     root_nodes = list(filter(lambda entry: entry.parent==None, list(root_nodes)))
     
@@ -105,7 +90,6 @@ def process_graph(adj):
 def extract_communities(root_nodes, min_threshold):
     communities = []
     for temp_root in tqdm(root_nodes):
-    # for temp_root in root_nodes:
 		#Filtering Nodes as Per Density Threshold
         communities_tmp = extract_sub_graph(temp_root, min_threshold)
         communities.extend(communities_tmp)
@@ -168,16 +152,3 @@ def normalize_sparse_tensor_by_row(sparse_tensor):
 
     return normalized_sparse_tensor
 
-
-def get_leaf_nodes_under(node):
-    # Base case: if node is a leaf node, return its name in a list
-    if node.left is None and node.right is None:
-        return [node.name]
-
-    # Recursive case: collect leaf nodes from both subtrees
-    leaves = []
-    if node.left is not None:
-        leaves.extend(get_leaf_nodes_under(node.left))
-    if node.right is not None:
-        leaves.extend(get_leaf_nodes_under(node.right))
-    return leaves

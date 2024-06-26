@@ -1,72 +1,11 @@
 import numpy as np
-# from scipy.stats import gaussian_kde
-# from scipy.spatial.distance import jensenshannon
 import torch
 import torch.distributions as dist
 import dgl
-from tqdm import tqdm
-import time
 import math
-# from torch.profiler import profile, record_function, ProfilerActivity
-# from . import util
 
 SEED = 42
 np.random.seed(SEED)
-
-
-def group_bias_contribution(adj, features, model, group, selected_nodes):
-    if len(selected_nodes) < len(group):
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        # To remove the row and column, work with indices and values
-        indices = adj.coalesce().indices()
-
-        src, dst = adj.coalesce().indices()
-
-        size = list(adj.size())
-
-        # Create the heterograph
-        g = dgl.heterograph({('node', 'edge', 'node'): (src.cpu().numpy(), dst.cpu().numpy())})
-        g = g.int().to(device)
-        with torch.no_grad():
-            pred_ori= model(g, features)
-        ori_dist = avg_dist(group, pred_ori)
-
-        # Remove indices corresponding to the ith row and column
-        # selected_nodes_tensor = torch.tensor(selected_nodes, dtype=torch.long).to(device)
-        selected_nodes_tensor = torch.from_numpy(selected_nodes.astype(int)).to(device)
-        mask_row = ~torch.isin(indices[0], selected_nodes_tensor)
-        mask_col = ~torch.isin(indices[1], selected_nodes_tensor) 
-        mask = mask_row & mask_col
-
-        filtered_indices = indices[:, mask]
-        # filtered_values = values[mask]
-        # Adjust indices to account for the removed row and column
-        for i in np.sort(selected_nodes)[:: -1]:
-            filtered_indices[0, filtered_indices[0] > i] -= 1
-            filtered_indices[1, filtered_indices[1] > i] -= 1 
-        src = filtered_indices[0]
-        dst = filtered_indices[1]
-        g_new = dgl.heterograph({('node', 'edge', 'node'): (src.cpu().numpy(), dst.cpu().numpy())}) 
-        g_new = g_new.int().to(device)
-
-        # Remove the ith row and column from the feature matrix
-        mask = torch.ones(size[0], dtype=bool)
-        mask[selected_nodes.astype(int)] = False
-        new_features = features[mask]
-
-        # Get the prediction for the new graph
-        with torch.no_grad():
-            pred = model(g_new, new_features)
-
-        # remove the ith element from the group
-        group_new = group[mask]
-
-        # Compute the group bias contribution
-        avg_dist_tmp = avg_dist(group_new, pred)
-        group_bias = ori_dist - avg_dist_tmp
-        return group_bias
-    else:
-        return 1
 
 
 def calc_attr_contributions(model, g, feat, selected_nodes, groups, attr_indices):
@@ -80,7 +19,6 @@ def calc_attr_contributions(model, g, feat, selected_nodes, groups, attr_indices
     ori_dist = avg_dist(groups, embeddings) 
 
     feat_clone = feat.clone().detach()
-    # feat_clone[..., selected_nodes, :][..., attr_indices] = feat_mean[attr_indices] 
     # Indices for rows and columns where the values need to be set to 1
     row_indices = torch.tensor(selected_nodes.astype(int))  # Rows 1 and 3
     col_indices = torch.tensor(attr_indices)  # Columns 0 and 2
@@ -96,31 +34,6 @@ def calc_attr_contributions(model, g, feat, selected_nodes, groups, attr_indices
     dist_perturbed = avg_dist(groups, embeddings_perturbed) 
     contributions = (ori_dist - dist_perturbed) / ori_dist 
     return contributions
-
-
-def calc_emb_contribution(model, g, feat, selected_nodes, groups):
-    if len(selected_nodes) < len(groups):
-        # Set the model to evaluation
-        model.eval()
-        # Get the embeddings
-        with torch.no_grad():
-            embeddings = model(g, feat)
-        ori_dist = avg_dist(groups, embeddings) 
-
-        # remove the embeddings of selected_nodes then calculate the average distance
-        embeddings_clone = embeddings.clone().detach()
-        # index out the selected nodes
-        # Create a mask where True indicates the rows we want to keep
-        mask = torch.ones(embeddings_clone.shape[0], dtype=torch.bool)  # Initially, select all rows
-        mask[selected_nodes.astype(int)] = False  # Set rows to remove to False
-        # Use the mask to select rows
-        new_dist = avg_dist(groups[mask], embeddings_clone[mask])
-
-        contributions = (ori_dist - new_dist) / ori_dist 
-
-        return contributions
-    else:
-        return 1
 
 
 def calc_structure_contribution(adj, model, g, feat, selected_nodes, groups):
@@ -152,7 +65,6 @@ def calc_structure_contribution(adj, model, g, feat, selected_nodes, groups):
     # Apply mask
     new_row_indices = row_indices[mask]
     new_col_indices = col_indices[mask]
-    # new_values = adj_clone.values()[mask]
 
     # Determine which diagonal indices need to be added
     needed_diagonals = selected_nodes_tensor
@@ -163,7 +75,6 @@ def calc_structure_contribution(adj, model, g, feat, selected_nodes, groups):
     if missing_diagonals.numel() > 0:
         new_row_indices = torch.cat([new_row_indices, missing_diagonals])
         new_col_indices = torch.cat([new_col_indices, missing_diagonals])
-        # new_values = torch.cat([new_values, torch.ones_like(missing_diagonals, dtype=torch.float32)])
 
     g_new = dgl.heterograph({('node', 'edge', 'node'): (new_row_indices.cpu().numpy(), new_col_indices.cpu().numpy())}) 
     g_new = g_new.int().to(feat.device)
@@ -208,7 +119,6 @@ def calc_attr_structure_contribution(adj, model, g, feat, selected_nodes, groups
     # Apply mask
     new_row_indices = row_indices[mask]
     new_col_indices = col_indices[mask]
-    # new_values = adj_clone.values()[mask]
 
     # Determine which diagonal indices need to be added
     needed_diagonals = selected_nodes_tensor
@@ -219,14 +129,12 @@ def calc_attr_structure_contribution(adj, model, g, feat, selected_nodes, groups
     if missing_diagonals.numel() > 0:
         new_row_indices = torch.cat([new_row_indices, missing_diagonals])
         new_col_indices = torch.cat([new_col_indices, missing_diagonals])
-        # new_values = torch.cat([new_values, torch.ones_like(missing_diagonals, dtype=torch.float32)])
 
     g_new = dgl.heterograph({('node', 'edge', 'node'): (new_row_indices.cpu().numpy(), new_col_indices.cpu().numpy())}) 
     g_new = g_new.int().to(feat.device)
 
     # Remove the ith row and column from the feature matrix
     feat_clone = feat.clone().detach()
-    # feat_clone[..., selected_nodes, :][..., attr_indices] = feat_mean[attr_indices] 
     # Indices for rows and columns where the values need
     row_indices = torch.tensor(selected_nodes.astype(int))  # Rows 1 and 3
     col_indices = torch.tensor(attr_indices)  # Columns 0 and 2
@@ -247,7 +155,6 @@ def calc_attr_structure_contribution(adj, model, g, feat, selected_nodes, groups
 
 
 def avg_dist(group_new, pred):
-    # group_unique = group_new.unique()
     # get the unique values of np array group_new
     group_unique = np.unique(group_new)
     # for each pair of groups, compute the distance between their predictions
@@ -279,19 +186,6 @@ def gaussian_kde_pytorch(data, bw_method='scott'):
 
     batch_size = 10**8 // n  # Maximum number of points that can be processed at once
 
-    # def evaluate(points):
-    #     # Shape of points: [D, P] where D is dimensions and P is number of points
-    #     # We need to compute the density at each point in `points` for each sample in `data`
-    #     # Expand data to [P, N, D]
-    #     # Expand points to [P, 1, D]
-    #     points = points.t().unsqueeze(1)  # Shape: [P, 1, D]
-    #     data0 = data.unsqueeze(0)  # Shape: [1, N, D]
-    #     diffs = points - data0  # Broadcasting to get differences [P, N, D]
-    #     # log_probs = kernel.log_prob(diffs)  # Sum over dimensions automatically, Shape: [P, N]
-    #     log_probs = mvnlogprob(kernel, diffs)
-    #     weights = torch.logsumexp(log_probs, dim=1) - torch.log(torch.tensor(n, dtype=torch.float32, device=data.device))
-    #     return torch.exp(weights)  # Convert log probabilities back to probabilities
-
     def evaluate(points):
         # Ensure points are in the correct shape [D, P]
         points = points.t()  # Transpose points if necessary
@@ -313,13 +207,6 @@ def gaussian_kde_pytorch(data, bw_method='scott'):
 
 
 def jsdist(set1, set2):
-    # # if set1.shape[0] > 10000, downsample to 10000
-    # if set1.shape[0] > 10000:
-    #     set1 = set1[np.random.choice(set1.shape[0], 10000, replace=False)]
-    # if set2.shape[0] > 10000:
-    #     set2 = set2[np.random.choice(set2.shape[0], 10000, replace=False)]
-    # print('set1:', set1[:10])
-    # print('set2:', set2[:10])
     kde1 = gaussian_kde_pytorch(set1)
     kde2 = gaussian_kde_pytorch(set2)
 
@@ -340,12 +227,11 @@ def jsdist(set1, set2):
 
     js_dist = torch.sqrt(0.5 * (kl1 + kl2))
 
-    # return js_dist.item()
-    # if js_dist.item() is nan, return 0
     if torch.isnan(js_dist):
         return 0
     else:
         return js_dist.item()
+
 
 def mvnlogprob(dist: torch.distributions.multivariate_normal.MultivariateNormal, 
                inputs: torch.tensor):

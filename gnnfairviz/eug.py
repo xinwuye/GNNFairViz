@@ -3,35 +3,17 @@ from . import draw
 from . import community
 from .css import scrollbar_css, multichoice_css, switch_css, card_css, tabs_css
 from . import RangesetCategorical
-# from .metrics import node_classification
-# from .metrics.pdd import pdd
 from . import individual_bias
 import numpy as np
 import holoviews as hv
-from holoviews import opts
-import os
-import pickle
 import torch
 import dgl
 import numpy as np
-from sklearn.manifold import TSNE
-from sklearn.metrics import f1_score
-from sklearn.metrics import accuracy_score
-from scipy import stats
 from holoviews.streams import Stream, param
 from holoviews import streams
-# import datashader as ds
-# import datashader.transfer_functions as tf
 import pandas as pd
-# from datashader.bundling import connect_edges, hammer_bundle
-# from holoviews.operation.datashader import datashade, bundle_graph
 import panel as pn
-# from . import RangesetCategorical
-import copy
-from bokeh.models import HelpButton, Tooltip
-import random
 import sys
-import time
 
 sys.setrecursionlimit(1000000)
 
@@ -53,33 +35,8 @@ FILL_GREY_COLOR = '#CCCCCC'
 np.random.seed(SEED)
 
 
-# class DataGraphView(Stream):
-#     xy = param.Array(default=np.array([]), constant=False, doc='XY positions.')
-#     sens_name = param.List(default=[], constant=True, doc='Sensitive attribute name.')
-
-
-# class DataGraphGraphView(Stream):
-#     # numpy array
-#     source_id = param.Array(default=np.array([]), constant=True, doc='Source of edges.')
-#     target_id = param.Array(default=np.array([]), constant=True, doc='Target of edges.')
-#     sens = param.Array(default=np.array([]), constant=True, doc='Sensitive attributes.')
-#     sampled_alpha = param.Array(default=np.array([]), constant=True, doc='Sampled alpha.')
-#     sens_names = param.List(default=[], constant=True, doc='Sensitive attribute names.')
-#     # bundle = param.Boolean(default=False, constant=True, doc='Whether to bundle edges.')
-
-
 class DataDensityView(Stream):
     graph_metrics = param.List(default=[], constant=True, doc='Graph metrics.')
-
-
-# class DataEmbeddingView(Stream):
-#     sampled_alpha = param.Array(default=np.array([]), constant=True, doc='Sampled alpha.')
-#     polygons_lst = param.List(default=[], constant=True, doc='Polygons.')
-#     max_edges_lst = param.List(default=[], constant=True, doc='Max edges.')
-
-
-class SampleIdx(Stream):
-    sample_idx = param.Array(default=np.array([]), constant=False, doc='Sampled indices.')
 
 
 class DataEmbeddingViewAlpha(Stream):
@@ -100,20 +57,6 @@ class DataEmbeddingViewThrRange(Stream):
     max_thr = param.Number(default=1, constant=True, doc='Max threshold.')
 
 
-class DataLegend(Stream):
-    sens = param.Array(default=np.array([]), constant=True, doc='Sensitive attributes.')
-    sens_names = param.List(default=[], constant=True, doc='Sensitive attribute names.')
-
-
-class DataMetricView(Stream):
-    metrics = param.List(default=[], constant=True, doc='Metrics.')
-
-
-class DataCorrelationViewSelection(Stream):
-    correlations = param.List(default=[], constant=False, doc='Correlations.')
-    p_vals = param.List(default=[], constant=False, doc='P values.')
-
-
 class SelectedNodes(Stream):
     selected_nodes = param.Array(default=np.array([], dtype=int), constant=False, doc='Selected nodes.')
 
@@ -125,10 +68,6 @@ class Groups(Stream):
 class Contributions(Stream):
     contributions = param.Array(default=np.array([]), constant=False, doc='Contributions.')
     contributions_selected_attrs = param.Array(default=np.array([0.]), constant=False, doc='Contributions selected attributes.')
-
-
-class ContributionsSelectedNodes(Stream):
-    contributions_selected_nodes = param.Number(default=0., constant=False, doc='Contributions selected nodes.')
 
 
 class SelectedAttrsLs(Stream):
@@ -147,8 +86,7 @@ class EUG:
         if feat_names is None:
             self.feat_names = np.array([str(i) for i in range(feat.shape[-1])])
         else:
-            self.feat_names = feat_names
-        # self.model = copy.deepcopy(model)        
+            self.feat_names = feat_names    
         self.model = model.to(device)
         self.model.eval()
         self.adj = adj.to(device)
@@ -160,7 +98,6 @@ class EUG:
         self.sens = sens
         self.groups_stream = Groups(groups=self.sens[0])
         self.sens_names = sens_names
-        # self.max_hop = max_hop 
         self.train_mask = masks[0]
         self.val_mask = masks[1] 
         self.test_mask = masks[2]
@@ -184,45 +121,23 @@ class EUG:
         else:
             self.labels = labels
 
-        # determine if each col is one-hot or not
-        if len(feat.shape) > 2:
-            feat_2d = feat.reshape(-1, feat.shape[-1])
-        else:
-            feat_2d = feat
-        # self.feat_types = np.all(np.logical_or(feat_2d == 0, feat_2d == 1), axis=0)
-
-        # self.sub_adj = None
         self.neighbors = None
 
         preprocessed = util.init(model, feat, g, emb_fnc)
         self.embeddings = preprocessed['embeddings']
         self.max_hop = len(self.embeddings)
-        # self.degree_boxes = preprocessed['degree_boxes']
-        # self.metrics = util.calc_metrics(self.embeddings, sens_names, sens, self.degree_boxes)
-        # self.metric_types = list(self.metrics[0].columns)
 
         self.embeddings_pca = util.proj_emb(self.embeddings, 'pca')
         self.embeddings_tsne = []
         self.embeddings_umap = util.proj_emb(self.embeddings, 'umap')
-        # print('umap is fine')
 
         self.xy = np.array(self.embeddings_umap)
-        # self.masked_adj_unfair = np.zeros_like(adj)
-        # self.masked_adj_fair = np.zeros_like(adj)
-        # self.feat_mask_unfair = np.zeros(self.feat.shape[-1])
-        # self.feat_mask_fair = np.zeros(self.feat.shape[-1])
         self.layers = list(range(1, len(self.embeddings)+1))
 
         self.colors = ['#F1B8B8', '#81A995', '#F1E9B8', '#907FA3', '#F1DAB8', 
                        '#7F89A1', '#D6E4AE', '#CB9AB0', '#738E96', '#F1E2B8', 
                        '#9A799E', '#B5D4A1', '#F1CEB8', '#8984A7', '#F1F1B8', ]
         
-        # self.selectable_metrics = []
-        # for layer in self.layers:
-        #     for metric_type in self.metric_types:
-        #         self.selectable_metrics.append(f'{layer}-{metric_type}')
-
-        # sampled_alpha = 1000 1s 
         self.n_nodes = adj.shape[0]
         self.node_indices = np.arange(self.n_nodes)
         self.selected_nodes_stream = SelectedNodes(selected_nodes=self.node_indices)
@@ -236,7 +151,6 @@ class EUG:
         self.graph_view_scatter = None
         self.graph_view = None
         self.metric_view = None
-        # self.feature_view = None
         self.correlation_view_selection_continuous = None
 
         self.records = []
@@ -253,13 +167,10 @@ class EUG:
         self.width = width
         padding = 15
         self.line_space = 10
-        # self.control_panel_height = int(height/3-35-30)
         self.control_panel_height = int(height/3-35)-padding
         self.control_panel_width = int(width/4-20)
         self.graph_view_height = int(height/3-35)-padding
         self.graph_view_width = int(width/4)-padding
-        # self.fairness_metric_view_height = int(height/3-35)-padding
-        # self.fairness_metric_view_width = int(width/2)-padding
         self.fairness_metric_view_height = int(height*2/3-35)-padding
         self.fairness_metric_view_width = int(width/4)-padding
         self.node_selection_view_height = int(height/3-35)-padding
@@ -268,8 +179,6 @@ class EUG:
         self.density_view_width = int(width/4)-padding
         self.structural_bias_overview_height = int(height*2/3-35)-padding
         self.structural_bias_overview_width = int(width/4)-padding
-        # self.attribute_view_height = int(height/2/2-35)
-        # self.attribute_view_width = int(width*10/14)
         self.correlation_view_height = int(height/3-35)-padding
         self.correlation_view_width = int(width/4)-padding
         self.diagnostic_panel_height = int(height*2/3-35)-padding
@@ -278,7 +187,6 @@ class EUG:
         # widget for all
         self.record_button = pn.widgets.Button(name='Record', button_type='default')
         self.record_button.on_click(self._record_button_callback)
-        # self.sens_name_selector = pn.widgets.Select(options=self.sens_names, value = self.sens_names[0], name='Sensitive Attribute')
         self.sens_name_selector = pn.widgets.MultiChoice(name='Sensitive Attribute', 
                                                          options=self.sens_names, 
                                                          value = [self.sens_names[0], ], 
@@ -291,7 +199,6 @@ class EUG:
         node_selection_clear_control_panel_button = pn.widgets.Button(name='Clear', button_type='default')
         node_selection_clear_control_panel_button.on_click(self._node_selection_clear_control_panel_button_callback)
         self.n_neighbors_scale_group = pn.widgets.RadioButtonGroup(options=['Original', 'Log'], value='Original', button_type='default')
-        # self.n_neighbors_scale_group.param.watch(self._n_neighbors_scale_group_callback, 'value')
 
         # widget for fairness metric view
         # a multi-select widget for selecting "train", "val", "test", "other"
@@ -316,7 +223,6 @@ class EUG:
                                                             start=0, 
                                                             end=self.n_nodes, 
                                                             step=1, 
-                                                            # value=self.init_sample_size, 
                                                             value=300,
                                                             width=200)
         
@@ -324,26 +230,16 @@ class EUG:
         node_sample_size = self.node_sample_size_slider.value
         self.sampled_alpha = np.zeros(self.n_nodes)
         sample_idx = np.random.choice(np.arange(self.n_nodes), node_sample_size, replace=False)
-        sample_idx_stream = SampleIdx(sample_idx=sample_idx)
         self.sampled_alpha[sample_idx] = 1
         self.data_embedding_view_alpha = DataEmbeddingViewAlpha(alpha=self.sampled_alpha) 
 
         sample_button = pn.widgets.Button(name='Sample', button_type='default')
         sample_button.on_click(self._sample_button_callback)
 
-        # sampled_alpha = np.zeros(self.n_nodes)
-        # # self.init_sample_size = 200
-        # self.init_sample_size = self.n_nodes
-        # sample_idx = np.random.choice(np.arange(self.n_nodes), self.init_sample_size, replace=False)
-        # sampled_alpha[sample_idx] = 1
-
-        # self.data_embedding_view = DataEmbeddingView(sampled_alpha=sampled_alpha,
-        #                                              xy=self.xy)
         self.data_embedding_view_xy = DataEmbeddingViewXy(xy=self.xy)
         self.data_embedding_view_xy.add_subscriber(self._prepare_data_embedding_view)
         self.groups_stream.add_subscriber(self._prepare_data_embedding_view)
         self.layer_selection.param.watch(self._prepare_data_embedding_view, 'value') 
-        # self.data_embedding_view = DataEmbeddingView(sampled_alpha=sampled_alpha)
         self.data_embedding_view_polys = DataEmbeddingViewPolys()
 
         self.data_embedding_view_thr_range = DataEmbeddingViewThrRange()
@@ -368,7 +264,6 @@ class EUG:
 
         # watch it
         self.graph_view_scatter_selection1d.add_subscriber(self._graph_view_scatter_selection1d_subscriber) 
-        # print('reach polys')
         self.graph_view_polys = hv.DynamicMap(pn.bind(draw.draw_embedding_view_polys,
                                                       layer=self.layer_selection,
                                                       colors=self.colors,
@@ -377,7 +272,6 @@ class EUG:
                      self.data_embedding_view_xy,
                      self.data_embedding_view_polys,
                      ])
-        # print('polys is fine')
         
         self.graph_view_square = hv.DynamicMap(pn.bind(draw.draw_embedding_view_square,
                                                        layer=self.layer_selection,),
@@ -432,19 +326,9 @@ class EUG:
             self.fairness_metric_view_chart_column,
             hide_header=True,
             name='Fairness Metric View',
-            # height=int(height/2-80),
-            # width=int(width/3),
             height=self.fairness_metric_view_height,
             width=self.fairness_metric_view_width,
         )
-
-### correlation view
-        feat_np = self.feat.cpu().numpy()
-
-        # options_dict = {f'Hop-{i+1}': i for i in range(self.max_hop)}
-        # self.correlation_view_selection = pn.widgets.Select(name='Hops', options=options_dict,
-        #                                                     width=int(self.correlation_view_width*0.93),
-        #     )
 
 ### attribute view
         # overview
@@ -501,16 +385,6 @@ class EUG:
             computational_graph_degrees.append(d.to_dense().squeeze())
         # convert computational_graph_degrees to a np array
         self.computational_graph_degrees = torch.stack(computational_graph_degrees).cpu().numpy()  
-
-        # self.dependency_view_degree_sens = hv.DynamicMap(pn.bind(draw.draw_dependency_view_degree_sens,
-        #                                                          computational_graph_degrees=self.computational_graph_degrees,
-        #                                                          hop=self.correlation_view_selection,
-        #                                                          scale=self.n_neighbors_scale_group,),
-        #                                                          streams=[self.selected_nodes_stream,
-        #                                                                   self.groups_stream,]).opts(
-        #                                                                       height=int(self.diagnostic_panel_height*0.42),
-        #                                                                       width=int(self.diagnostic_panel_width*0.3),
-        #                                                                   )
 
         groups = self.groups_stream.groups
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -583,7 +457,6 @@ class EUG:
             self.communities.append(final_slice)
         graph_metrics = util.calculate_graph_metrics(self.communities) # Adjust this line as per your actual data structure
         self.data_density_view = DataDensityView(graph_metrics=graph_metrics)
-        # self.density_view_scatter = draw.draw_density_view_scatter(graph_metrics) \
         self.density_view_scatter = hv.DynamicMap(draw.draw_density_view_scatter,
                                                   streams=[self.data_density_view]).opts(
                   width=int(self.node_selection_view_width*0.3) - self.line_space, 
@@ -643,18 +516,10 @@ class EUG:
         )
         contribution_attrs_summative = self.contributions_stream.contributions.sum()
 
-        # self.bias_contributions_nodes = 1
-        # self.bias_contributions_attrs = contribution_attrs
-        # self.bias_contributions_structure = contribution_structure
-        # self.bias_contributions_attrs_structure = contribution_attrs_structure
-        # self.bias_contributions_emb = 1
-
-        # self.bias_contributions_nodes_latex = pn.pane.LaTeX('Nodes: 1')
         self.bias_contributions_attrs_summative_latex = pn.pane.LaTeX(f'Attr.(Summative): {contribution_attrs_summative:.3f}')
         self.bias_contributions_attrs_synergistic_latex = pn.pane.LaTeX(f'Attr.(Synergistic): {contribution_attrs:.3f}')
         self.bias_contributions_structure_latex = pn.pane.LaTeX(f'Struc.: {contribution_structure:.3f}')
         self.bias_contributions_attrs_structure_latex = pn.pane.LaTeX(f'Attr. & Struc.: {contribution_attrs_structure:.3f}')
-        # self.bias_contributions_emb_latex = pn.pane.LaTeX(f'Embeddings: 1')
 
         self.attribute_view_overview.opts(
             height=int(self.diagnostic_panel_height*0.41),
@@ -663,22 +528,16 @@ class EUG:
         self.diagnostic_panel = pn.Card(
             pn.Row(
                 pn.Column(
-                    # '#### Attribute Selection',
-                    # self.attr_selection_mode_button,
-                    # self.new_selection_button,
                     '#### Bias Contributions',
-                    # self.bias_contributions_nodes_latex,
                     self.bias_contributions_attrs_summative_latex,
                     self.bias_contributions_attrs_synergistic_latex,
                     self.bias_contributions_structure_latex,
                     self.bias_contributions_attrs_structure_latex,
-                    # self.bias_contributions_emb_latex,
                 ),
                 pn.pane.HTML(f"<div style='width: 1px; background-color: {FILL_GREY_COLOR}; height: {int(self.diagnostic_panel_height*0.5)}px;'></div>"),
                 pn.Column(
                     pn.Row(
                         '#### Attr. Overview',
-                        # pn.Row(pn.pane.Str('Selection Mode'), self.attr_selection_mode_button),
                         pn.Row(
                             pn.pane.LaTeX('Selection Mode', styles={'margin-top': '11px'}), 
                             self.attr_selection_mode_button
@@ -863,11 +722,9 @@ class EUG:
 
     def _sample_button_callback(self, event):
         node_sample_size = self.node_sample_size_slider.value
-        # edge_sample_size = self.edge_sample_size_slider.value
         if node_sample_size < self.n_nodes:
             sampled_alpha = np.zeros(self.n_nodes)
             sample_idx = np.random.choice(np.arange(self.n_nodes), node_sample_size, replace=False)
-            # self.sampled_idx_stream.event(sampled_idx=sample_idx)
             sampled_alpha[sample_idx] = 1
             self.sampled_alpha = sampled_alpha
         else:
@@ -878,7 +735,7 @@ class EUG:
             # create a np array containing 1 and 0.2 representing the alpha value of the nodes selected and not selected
             selected_alpha = np.zeros(self.n_nodes)
             selected_alpha[selected_nodes] = 1
-            # not selected nodes are set to 0.2
+            # not selected nodes are set to 0
             selected_alpha[selected_alpha == 0] = 0
             alpha = selected_alpha * self.sampled_alpha 
         else:
@@ -973,12 +830,10 @@ class EUG:
                     if not id.empty:
                         id = id.values[0]
                         if id in self.selected_attrs_ls_stream.selected_attrs_ls[-1]:
-                            # self.selected_attrs_ls_stream.selected_attrs_ls[-1].remove(id)
                             selected_attrs_ls = self.selected_attrs_ls_stream.selected_attrs_ls.copy()
                             selected_attrs_ls[-1].remove(id)
                             self.selected_attrs_ls_stream.event(selected_attrs_ls=selected_attrs_ls)
                         else:
-                            # self.selected_attrs_ls_stream.selected_attrs_ls[-1].append(id)
                             selected_attrs_ls = self.selected_attrs_ls_stream.selected_attrs_ls.copy()
                             selected_attrs_ls[-1].append(id)
                             self.selected_attrs_ls_stream.event(selected_attrs_ls=selected_attrs_ls)
@@ -1015,7 +870,6 @@ class EUG:
                                 self.selected_attrs_ls_stream.event(selected_attrs_ls=selected_attrs_ls)
                             else: 
                                 self.selected_attrs_ls_stream.event(selected_attrs_ls=[[]])
-                            # self.selected_attrs_ls_stream.event(selected_attrs_ls=selected_attrs_ls)
                             contributions_selected_attrs = self.contributions_stream.contributions_selected_attrs.copy() 
                             tmp_contributions_selected_attrs = np.delete(contributions_selected_attrs, i)
                             if tmp_contributions_selected_attrs.size == 0:
@@ -1037,43 +891,15 @@ class EUG:
             # convert node_indices_selected to a list
             selected_nodes = np.array(list(map(int, self.selected_communities_dropdown.value.split(', '))))
         else:
-            # selected_nodes = self.node_indices
             selected_nodes = np.array([])
-        # self.selected_nodes_stream.event(selected_nodes=selected_nodes)
         pre_selected_nodes = self.pre_selected_nodes_stream.selected_nodes
         self.pre_selected_nodes_stream.event(selected_nodes=np.union1d(pre_selected_nodes, selected_nodes))
 
-    def _get_data_mask(self):
-        """
-        Create a mask for the selected data categories (train, val, test, other).
-        """
-        mask = torch.zeros_like(self.train_mask).bool()
-        if 'Train' in self.data_selector.value:
-            mask = mask | self.train_mask
-        if 'Val' in self.data_selector.value:
-            mask = mask | self.val_mask
-        if 'Test' in self.data_selector.value:
-            mask = mask | self.test_mask
-        if 'Unlabeled' in self.data_selector.value:
-            mask = mask | self.other_mask 
-        return mask
-
-    # def _sens_name_confirm_control_panel_button_callback(self, event):
-    #     sens_name = self.sens_name_selector.value
-    #     self.graph_view_scatter.event(sens_name=sens_name)
-    #     self.graph_view_xdist.event(sens_name=sens_name)
-    #     self.graph_view_ydist.event(sens_name=sens_name)
-    #     # self._confirm_control_panel_button_callback(event)
-    #     self._update_fairness_metric_view()
-
-    # def _update_fairness_metric_detail(self, event, metric_name):
     def _update_fairness_metric_detail(self, index):
-        # print('index:', index)
         if index:
             metric_name = index[0]
             chart = hv.DynamicMap(pn.bind(draw.draw_fairness_metric_view_detail,
                                         metric_name=metric_name,
-                                        #   metric_name_dict=self.metric_name_dict,
                                         labels=self.labels,
                                         predictions=self.predictions,
                                         eod_radio=self.fairness_metric_view_chart_eod_radio),
@@ -1092,14 +918,9 @@ class EUG:
         else:
             self.fairness_metric_view_chart.object = None
 
-
     def _min_threshold_slider_button_callback(self, event):
         thr = self.min_threshold_slider.value
         # Recalculate communities
-        # self.node_communities = community.extract_communities(community.Tree(), 
-        #                                                       *copy.deepcopy(self.extract_communities_args[1: 3]), 
-        #                                                       self.extract_communities_args[3], 
-        #                                                       thr)
         self.node_communities = community.extract_communities(self.extract_communities_args,
                                                                 thr)
         self.communities = []
@@ -1113,15 +934,12 @@ class EUG:
             final_slice = row_sliced[:, indices_sorted]
             self.communities.append(final_slice)
         graph_metrics = util.calculate_graph_metrics(self.communities)
-        # self.density_view_scatter.object = draw.draw_density_view_scatter(graph_metrics)
         self.data_density_view.event(graph_metrics=graph_metrics)
 
     def _pre_selected_nodes_stream_subscriber(self, selected_nodes):
         if len(selected_nodes) > 0:
             selected_alpha = np.zeros(self.n_nodes)
-            # selected_alpha[selected_nodes] = 1
             selected_alpha[self.pre_selected_nodes_stream.selected_nodes.astype(int)] = 1
-            # selected_alpha[selected_alpha == 0] = 0 
             # element-wise multiplication of the selected_alpha and the sampled_alpha
             alpha = selected_alpha * self.sampled_alpha
         else:
@@ -1185,17 +1003,10 @@ class EUG:
             attr_indices=list(range(self.n_feat))
         )
         contribution_attrs_summative = self.contributions_stream.contributions.sum()
-        # self.bias_contributions_nodes = contribution_nodes
-        # self.bias_contributions_attrs = contribution_attrs
-        # self.bias_contributions_structure = contribution_structure
-        # self.bias_contributions_attrs_structure = contribution_attrs_structure
-        # self.bias_contributions_emb = contribution_emb
-        # self.bias_contributions_nodes_latex.object = f'Nodes: {contribution_nodes:.3f}'
         self.bias_contributions_attrs_summative_latex.object = f'Attr.(Summative): {contribution_attrs_summative:.3f}'
         self.bias_contributions_attrs_synergistic_latex.object = f'Attr.(Synergistic): {contribution_attrs:.3f}'
         self.bias_contributions_structure_latex.object = f'Structure: {contribution_structure:.3f}'
         self.bias_contributions_attrs_structure_latex.object = f'Attr. & Struc.: {contribution_attrs_structure:.3f}'
-        # self.bias_contributions_emb_latex.object = f'Embeddings: {contribution_emb:.3f}'
 
         # update self.group_connection_matrices_stream
         groups = self.groups_stream.groups
@@ -1298,17 +1109,10 @@ class EUG:
             attr_indices=list(range(self.n_feat))
         )
         contribution_attrs_summative = self.contributions_stream.contributions.sum()
-        # self.bias_contributions_nodes = contribution_nodes
-        # self.bias_contributions_attrs = contribution_attrs
-        # self.bias_contributions_structure = contribution_structure
-        # self.bias_contributions_attrs_structure = contribution_attrs_structure
-        # self.bias_contributions_emb = contribution_emb
-        # self.bias_contributions_nodes_latex.object = f'Nodes: {contribution_nodes:.3f}'
         self.bias_contributions_attrs_summative_latex.object = f'Attr.(Summative): {contribution_attrs_summative:.3f}'
         self.bias_contributions_attrs_synergistic_latex.object = f'Attr.(Synergistic): {contribution_attrs:.3f}'
         self.bias_contributions_structure_latex.object = f'Structure: {contribution_structure:.3f}'
         self.bias_contributions_attrs_structure_latex.object = f'Attr. & Struc.: {contribution_attrs_structure:.3f}'
-        # self.bias_contributions_emb_latex.object = f'Embeddings: {contribution_emb:.3f}'
 
         self.record_nodes_selector.options = list(np.unique(groups))
         self.record_nodes_selector.value = self.record_nodes_selector.options
@@ -1379,7 +1183,6 @@ class EUG:
                 # compute the embeddings
                 self.embeddings_umap = util.proj_emb(self.embeddings, 'umap')
             # update the embeddings
-            # self.data_embedding_view.event(xy=np.array(self.embeddings_umap))
             self.data_embedding_view_xy.event(xy=np.array(self.embeddings_umap))
         elif projection_name == 't-SNE':
             # check if self.embeddings_tsne is an empty list
@@ -1387,7 +1190,6 @@ class EUG:
                 # compute the embeddings
                 self.embeddings_tsne = util.proj_emb(self.embeddings, 'tsne')
             # update the embeddings
-            # self.data_embedding_view.event(xy=np.array(self.embeddings_tsne))
             self.data_embedding_view_xy.event(xy=np.array(self.embeddings_tsne))
         elif projection_name == 'PCA':
             # check if self.embeddings_pca is an empty list
@@ -1395,7 +1197,6 @@ class EUG:
                 # compute the embeddings
                 self.embeddings_pca = util.proj_emb(self.embeddings, 'pca')
             # update the embeddings
-            # self.data_embedding_view.event(xy=np.array(self.embeddings_pca))
             self.data_embedding_view_xy.event(xy=np.array(self.embeddings_pca))
 
     def _prepare_data_embedding_view(self, event=None, xy=None, groups=None):
@@ -1414,9 +1215,7 @@ class EUG:
             self.pre_compute_contours_cache[(tuple(self.sens_name_selector.value), layer)] = (min_thr, max_thr, polygons_lst, max_edges_lst)
         else:
             min_thr, max_thr, polygons_lst, max_edges_lst = self.pre_compute_contours_cache[(tuple(self.sens_name_selector.value), layer)]
-        # print('pre contours is fine')
         # update polygons_lst, max_edges_lst in the data_embedding_view
-        # self.data_embedding_view.event(polygons_lst=polygons_lst, max_edges_lst=max_edges_lst)
         self.data_embedding_view_polys.event(polygons_lst=polygons_lst, max_edges_lst=max_edges_lst)
         self.data_embedding_view_thr_range.event(min_thr=min_thr, max_thr=max_thr)
 
@@ -1436,7 +1235,6 @@ class EUG:
                 groups=self.groups_stream.groups,
                 attr_indices=selected_attrs_ls[-1]
             )
-            # self.contributions_stream.contributions_selected_attrs[-1] = contribution_selected_attrs
             contributions_selected_attrs = self.contributions_stream.contributions_selected_attrs.copy() 
             contributions_selected_attrs[-1] = contribution_selected_attrs
         else:
@@ -1453,28 +1251,6 @@ class EUG:
             record_attribute_selection_options += list(range(1, len(selected_attrs_ls)+1))
         self.record_attribute_selection.options = record_attribute_selection_options
         self.record_attribute_selection.value = 'All'
-
-    def _save_extract_communities_args(self):
-        # Determine the directory of the current file
-        current_dir = os.path.dirname(__file__)
-        file_path = os.path.join(current_dir, 'extract_communities_args.pkl')
-
-        # Use pickle to serialize self.extract_communities_args to the file
-        with open(file_path, 'wb') as file:
-            # pickle.dump(self.extract_communities_args, file) 
-            pickle.dump(self.extract_communities_args[1: 3], file)
-            # pickle.dump(self.extract_communities_args[1], file)
-
-    def _load_extract_communities_args(self):
-        # Determine the directory of the current file
-        current_dir = os.path.dirname(__file__)
-        file_path = os.path.join(current_dir, 'extract_communities_args.pkl')
-
-        # Use pickle to deserialize the object from the file
-        with open(file_path, 'rb') as file:
-            # self.extract_communities_args = pickle.load(file)
-            ret = pickle.load(file)
-        return ret
 
     def _new_selection_button_callback(self, event):
         contributions_selected_attrs = self.contributions_stream.contributions_selected_attrs.copy()
@@ -1510,10 +1286,6 @@ class EUG:
             'Nodes': recorded_nodes, 
             'Edges': self.record_edge_switch.value,
             'Attributes': recorded_attrs,
-            # 'Bias Contribution of Nodes': self.bias_contributions_nodes,
-            # 'Bias Contribution of Attributes': self.bias_contributions_attrs,
-            # 'Bias Contribution of Structure': self.bias_contributions_structure,
-            # 'Bias Contribution of Embeddings': self.bias_contributions_emb,
         })   
 
     def _graph_view_scatter_selection1d_subscriber(self, index):
@@ -1521,7 +1293,6 @@ class EUG:
         device = self.adj0.device
         if index:
             if len(index) > 1:
-                # self.selected_nodes_stream.event(selected_nodes=np.array(index))
                 pre_selected_nodes = self.pre_selected_nodes_stream.selected_nodes
                 self.pre_selected_nodes_stream.event(selected_nodes=np.union1d(pre_selected_nodes, np.array(index)))
             else:
@@ -1534,17 +1305,10 @@ class EUG:
                         neigh_i = torch.mm(neigh_i, self.adj0)
                     selected_nodes = torch.cat((selected_nodes, neigh_i.coalesce().indices()[1]))
                 selected_nodes = torch.unique(selected_nodes).cpu().numpy().astype(int)
-                # adj_mul_indices_current = self.adj_mul_indices[self.layer_selection.value - 1]
-                # selected_nodes = adj_mul_indices_current[1, adj_mul_indices_current[0] == idx].cpu().numpy()
-                # if idx not in selected_nodes:
-                #     selected_nodes = np.append(selected_nodes, idx)
-
-                # self.selected_nodes_stream.event(selected_nodes=selected_nodes)
                 pre_selected_nodes = self.pre_selected_nodes_stream.selected_nodes
                 self.pre_selected_nodes_stream.event(selected_nodes=np.union1d(pre_selected_nodes, selected_nodes))
                 
         else:
-            # self.selected_nodes_stream.event(selected_nodes=self.node_indices)
             pre_selected_nodes = self.pre_selected_nodes_stream.selected_nodes
             self.pre_selected_nodes_stream.event(selected_nodes=np.union1d(pre_selected_nodes, np.array([])))
 
@@ -1560,10 +1324,6 @@ class EUG:
         if len(self.selected_nodes_stream.selected_nodes) < self.n_nodes:
             self.selected_nodes_stream.event(selected_nodes=self.node_indices)
         
-        # options = self.selected_communities_dropdown.options
-        # if None not in options:
-        #     options.insert(0, None)
-        #     self.selected_communities_dropdown.options = options
         self.selected_communities_dropdown.value = None
         print('options:', self.selected_communities_dropdown.options)
 
@@ -1581,7 +1341,6 @@ class EUG:
                 selected_nodes = np.where((log_degrees >= min_degree) & (log_degrees < max_degree))[0]
             pre_selected_nodes = self.pre_selected_nodes_stream.selected_nodes
             self.pre_selected_nodes_stream.event(selected_nodes=np.union1d(pre_selected_nodes, selected_nodes))
-
 
     def get_fairness_metrics(self):
         return self.fairness_metric_view_value_bar.data[()]['Value']

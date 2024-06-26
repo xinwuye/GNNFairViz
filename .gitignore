@@ -1,6 +1,6 @@
 /data/
 dataset/*
-pyeug/extract_communities_args.pkl
+gnnfairviz/extract_communities_args.pkl
 evaluation/cases/presentation_interview/*
 evaluation/cases/presentation copy/*
 

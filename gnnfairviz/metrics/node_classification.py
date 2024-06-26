@@ -1,4 +1,3 @@
-from sklearn.metrics import f1_score
 from sklearn.metrics import accuracy_score
 import numpy as np
 
