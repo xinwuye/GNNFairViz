@@ -162,7 +162,7 @@ class EUG:
 
     def show(self):
         height = 900
-        width = 1400
+        width = 1430
         self.height = height
         self.width = width
         padding = 15
@@ -1325,7 +1325,6 @@ class EUG:
             self.selected_nodes_stream.event(selected_nodes=self.node_indices)
         
         self.selected_communities_dropdown.value = None
-        print('options:', self.selected_communities_dropdown.options)
 
     def _structural_bias_overview_hist_all_selection1d_subscriber(self, index):
         if index:

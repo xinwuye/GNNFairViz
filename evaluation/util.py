@@ -30,7 +30,6 @@ def train(g, features, labels, masks, model, epochs=2000, patience=1500, save_pa
     for epoch in tqdm(range(epochs), desc="Epochs"):
         model.train()
         logits = model(g, features)
-        # print(logits.shape, labels.shape, train_mask.shape)
         loss = loss_fcn(logits[train_mask], labels[train_mask])
 
         optimizer.zero_grad()

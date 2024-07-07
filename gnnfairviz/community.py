@@ -48,7 +48,6 @@ def SetUnion(x, y, adj):
     selected_block = torch.index_select(selected_rows, 1, torch.tensor(r.vertices).to(device))
     n = len(r.vertices)
     r.density = selected_block._nnz() / (n * (n-1))
-    # print(r.density)
     return r
 
 
@@ -56,7 +55,6 @@ def process_graph(adj):
     normed_adj = normalize_sparse_tensor_by_row(adj)
     M = extract_upper_triangular(torch.sparse.mm(normed_adj, normed_adj.T)).coalesce() 
     nnz = adj._nnz() 
-    print('nnz', nnz)
 
     top_indices = find_top_k_sparse(M, nnz).T 
 
@@ -64,8 +62,8 @@ def process_graph(adj):
     root_nodes = set()
 
     # for i, value in enumerate(top_values):
-    for vertices in tqdm(top_indices):
-        # vertices = top_indices[:, i]
+    # for vertices in tqdm(top_indices):
+    for vertices in top_indices:
         i,j = vertices
         if nodes.__contains__(i) is False:
             a = Node(i)
@@ -89,7 +87,8 @@ def process_graph(adj):
 
 def extract_communities(root_nodes, min_threshold):
     communities = []
-    for temp_root in tqdm(root_nodes):
+    # for temp_root in tqdm(root_nodes):
+    for temp_root in root_nodes:
 		#Filtering Nodes as Per Density Threshold
         communities_tmp = extract_sub_graph(temp_root, min_threshold)
         communities.extend(communities_tmp)
@@ -116,7 +115,6 @@ def extract_upper_triangular(sparse_tensor):
     # Access indices and values of the sparse tensor
     indices = sparse_tensor.indices()
     values = sparse_tensor.values()
-    print(values)   
     
     # Find elements where the column index is greater than or equal to the row index
     mask = indices[1] >= indices[0]

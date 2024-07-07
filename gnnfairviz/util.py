@@ -229,7 +229,8 @@ def calc_contributions(model, g, feat, selected_nodes, groups):
 
     # for each column in feat
     contributions = np.zeros(n_feat)
-    for i in tqdm(range(n_feat)):
+    # for i in tqdm(range(n_feat)):
+    for i in range(n_feat):
         feat_clone = feat.clone().detach()
         feat_clone[..., selected_nodes, i] = feat_mean[i]
         with torch.no_grad():
