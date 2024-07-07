@@ -13,7 +13,7 @@ You can install GNNFairViz using pip or from source.
 ### Using pip
 
 ```bash
-pip install GNNFairViz
+pip install gnnfairviz
 ```
 
 ### From Source
